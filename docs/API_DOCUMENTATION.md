@@ -1,12 +1,12 @@
-# PMark2 API 문서
+# PMark3 API 문서
 
 ## 📋 개요
 
-PMark2 API는 설비관리 시스템을 위한 자연어 기반 AI 작업요청 생성 서비스입니다. 이 문서는 모든 API 엔드포인트와 사용법을 설명합니다.
+PMark3 API는 설비관리 시스템을 위한 자연어 기반 AI 작업요청 생성 서비스입니다. 이 문서는 모든 API 엔드포인트와 사용법을 설명합니다.
 
 ## 🚀 기본 정보
 
-- **Base URL**: `http://localhost:8001`
+- **Base URL**: `http://localhost:8010`
 - **API 버전**: v1
 - **인증**: 현재 없음 (개발 환경)
 - **응답 형식**: JSON
@@ -17,10 +17,17 @@ PMark2 API는 설비관리 시스템을 위한 자연어 기반 AI 작업요청 
 - **GET** `/health` - 서버 상태 확인
 
 ### 2. 채팅 API
-- **POST** `/api/v1/chat` - 사용자 입력 분석 및 추천
+- **POST** `/api/v1/chat` - 사용자 입력 분석 및 추천 (세션 관리 포함)
 
 ### 3. 작업상세 생성 API
 - **POST** `/api/v1/generate-work-details` - 작업상세 생성
+
+### 4. 자동완성 API
+- **POST** `/api/v1/autocomplete` - 자동완성 기능
+
+### 5. 세션 관리 API
+- **GET** `/api/v1/session/{session_id}` - 세션 정보 조회
+- **DELETE** `/api/v1/session/{session_id}` - 세션 삭제
 
 ## 🔍 상세 API 문서
 
@@ -32,13 +39,15 @@ PMark2 API는 설비관리 시스템을 위한 자연어 기반 AI 작업요청 
 
 **요청:**
 ```bash
-curl http://localhost:8001/health
+curl http://localhost:8010/health
 ```
 
 **응답:**
 ```json
 {
-  "status": "healthy"
+  "status": "healthy",
+  "message": "PMark3 AI Assistant API",
+  "version": "3.0.0"
 }
 ```
 
@@ -52,14 +61,15 @@ curl http://localhost:8001/health
 
 #### POST /api/v1/chat
 
-사용자의 자연어 입력을 분석하고 유사한 작업을 추천합니다.
+사용자의 자연어 입력을 분석하고 유사한 작업을 추천합니다. 세션 관리를 통해 멀티턴 대화를 지원합니다.
 
 **요청:**
 ```bash
-curl -X POST "http://localhost:8001/api/v1/chat" \
+curl -X POST "http://localhost:8010/api/v1/chat" \
      -H "Content-Type: application/json" \
      -d '{
        "message": "No.1 PE 압력베젤 고장",
+       "session_id": "optional_session_id",
        "conversation_history": []
      }'
 ```
@@ -68,6 +78,7 @@ curl -X POST "http://localhost:8001/api/v1/chat" \
 ```json
 {
   "message": "string",           // 사용자 입력 메시지
+  "session_id": "string",        // 세션 ID (선택사항)
   "conversation_history": []     // 대화 이력 (선택사항)
 }
 ```
@@ -76,6 +87,7 @@ curl -X POST "http://localhost:8001/api/v1/chat" \
 ```json
 {
   "message": "string",           // AI 응답 메시지
+  "session_id": "string",        // 세션 ID
   "recommendations": [           // 추천 목록
     {
       "itemno": "string",        // ITEMNO
@@ -98,77 +110,18 @@ curl -X POST "http://localhost:8001/api/v1/chat" \
     "itemno": "string",          // 추출된 ITEMNO (S2)
     "confidence": 0.95          // 파싱 신뢰도
   },
-  "needs_additional_input": false, // 추가 입력 필요 여부
-  "missing_fields": []           // 누락된 필드 목록
-}
-```
-
-**예시 요청:**
-
-1. **위치 기반 검색:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "No.1 PE 압력베젤 고장"}'
-```
-
-2. **다른 위치 검색:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "석유제품배합/저장 탱크 누설"}'
-```
-
-3. **우선순위 포함 검색:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "RFCC 펌프 작동불량 일반작업"}'
-```
-
-4. **ITEMNO 조회:**
-```bash
-curl -X POST "http://localhost:8001/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "ITEMNO PE-SE1304B"}'
-```
-
-**예시 응답:**
-
-```json
-{
-  "message": "입력하신 내용을 분석했습니다:\n\n• 위치/공정: No.1 PE\n• 설비유형: [VEDR]Pressure Vessel/ Drum\n• 현상코드: 고장.결함.수명소진\n• 우선순위: 긴급작업(최우선순위)\n\n분석 신뢰도: 95.0%\n\n유사한 작업 3건을 찾았습니다:\n1. [VEDR]Pressure Vessel/ Drum (No.1 PE) - 유사도 100.0%\n2. [VEDR]Pressure Vessel/ Drum (No.1 PE) - 유사도 100.0%\n3. [VEDR]Pressure Vessel/ Drum (No.1 PE) - 유사도 100.0%\n\n원하는 작업을 선택하시면 상세 정보를 제공해드립니다.",
-  "recommendations": [
-    {
-      "itemno": "PE-SE1304B",
-      "process": "SKGC-설비관리",
-      "location": "No.1 PE",
-      "equipType": "[VEDR]Pressure Vessel/ Drum",
-      "statusCode": "고장.결함.수명소진",
-      "priority": "긴급작업(최우선순위)",
-      "score": 1.0,
-      "work_title": "[긴급]_PE-SE1304\"B\" BTM Plate Clamp 점검작업",
-      "work_details": "[긴급]_PE-SE1304\"B\" BTM Plate Clamp 점검작업"
-    }
-  ],
-  "parsed_input": {
-    "scenario": "S1",
-    "location": "No.1 PE",
-    "equipment_type": "[VEDR]Pressure Vessel/ Drum",
-    "status_code": "고장.결함.수명소진",
-    "priority": "긴급작업(최우선순위)",
-    "itemno": null,
-    "confidence": 0.95
-  },
-  "needs_additional_input": false,
-  "missing_fields": []
+  "session_info": {              // 세션 정보
+    "session_id": "string",      // 세션 ID
+    "created_at": "string",      // 생성 시간
+    "message_count": 5,          // 메시지 수
+    "context_summary": "string"  // 컨텍스트 요약
+  }
 }
 ```
 
 **응답 코드:**
 - `200 OK`: 성공
 - `400 Bad Request`: 잘못된 요청
-- `422 Unprocessable Entity`: 유효성 검사 실패
 - `500 Internal Server Error`: 서버 오류
 
 ---
@@ -177,268 +130,226 @@ curl -X POST "http://localhost:8001/api/v1/chat" \
 
 #### POST /api/v1/generate-work-details
 
-선택된 추천 항목에 대한 작업상세를 생성합니다.
+ITEMNO를 기반으로 작업상세를 생성합니다.
 
 **요청:**
 ```bash
-curl -X POST "http://localhost:8001/api/v1/generate-work-details" \
+curl -X POST "http://localhost:8010/api/v1/generate-work-details" \
      -H "Content-Type: application/json" \
      -d '{
-       "selected_recommendation": {
-         "itemno": "PE-SE1304B",
-         "location": "No.1 PE",
-         "equipType": "[VEDR]Pressure Vessel/ Drum",
-         "statusCode": "고장.결함.수명소진",
-         "priority": "긴급작업(최우선순위)"
-       },
-       "user_message": "No.1 PE 압력베젤 고장"
+       "itemno": "ITEM001",
+       "session_id": "optional_session_id"
      }'
 ```
 
 **요청 스키마:**
 ```json
 {
-  "selected_recommendation": {   // 선택된 추천 항목
-    "itemno": "string",
-    "location": "string",
-    "equipType": "string",
-    "statusCode": "string",
-    "priority": "string"
-  },
-  "user_message": "string"       // 사용자 원본 메시지
+  "itemno": "string",           // ITEMNO
+  "session_id": "string"        // 세션 ID (선택사항)
 }
 ```
 
 **응답 스키마:**
 ```json
 {
-  "work_title": "string",        // 생성된 작업명
-  "work_details": "string",      // 생성된 작업상세
-  "confidence": 0.95            // 생성 신뢰도
+  "itemno": "string",           // ITEMNO
+  "work_title": "string",       // 작업명
+  "work_details": "string",     // 상세 작업 내용
+  "location": "string",         // 위치
+  "equipment_type": "string",   // 설비유형
+  "status_code": "string",      // 현상코드
+  "priority": "string",         // 우선순위
+  "estimated_time": "string",   // 예상 소요시간
+  "required_tools": "string",   // 필요 도구
+  "safety_notes": "string"      // 안전 주의사항
 }
 ```
-
-**예시 응답:**
-```json
-{
-  "work_title": "[긴급] No.1 PE 압력베젤 고장 수리작업",
-  "work_details": "No.1 PE 공정의 압력베젤에서 고장이 발생하여 긴급 수리가 필요합니다. 안전을 위해 즉시 작업을 진행해야 합니다.",
-  "confidence": 0.92
-}
-```
-
-**응답 코드:**
-- `200 OK`: 성공
-- `400 Bad Request`: 잘못된 요청
-- `422 Unprocessable Entity`: 유효성 검사 실패
-- `500 Internal Server Error`: 서버 오류
 
 ---
 
-## 🔧 API 사용 가이드
+### 4. 자동완성 API
 
-### 1. 위치 기반 검색 활용
+#### POST /api/v1/autocomplete
 
-PMark2는 위치 정보를 우선적으로 활용하여 정확한 추천을 제공합니다.
+사용자 입력에 대한 자동완성 제안을 제공합니다.
 
-**권장 입력 형식:**
-```
-"[위치] [설비유형] [현상코드] [우선순위]"
-```
-
-**예시:**
-- "No.1 PE 압력베젤 고장"
-- "석유제품배합/저장 탱크 누설"
-- "RFCC 펌프 작동불량 일반작업"
-
-### 2. 유사도 점수 해석
-
-- **1.0 (100%)**: 완벽한 매칭
-- **0.8-0.99 (80-99%)**: 매우 높은 유사도 (녹색)
-- **0.6-0.79 (60-79%)**: 높은 유사도 (주황)
-- **0.2-0.59 (20-59%)**: 낮은 유사도 (빨강)
-- **<0.2**: 추천 제외
-
-### 3. 시나리오별 처리
-
-#### S1: 자연어 요청
-- 위치, 설비유형, 현상코드, 우선순위 추출
-- LLM 기반 정규화
-- 유사한 작업 검색 및 추천
-
-#### S2: ITEMNO 조회
-- ITEMNO 파싱
-- 해당 작업의 상세 정보 제공
-
-### 4. 에러 처리
-
-**일반적인 에러 응답:**
-```json
-{
-  "detail": "에러 메시지"
-}
-```
-
-**에러 코드:**
-- `400`: 잘못된 요청 형식
-- `422`: 입력 데이터 유효성 검사 실패
-- `500`: 서버 내부 오류
-
----
-
-## 🧪 API 테스트
-
-### 1. Swagger UI
-
-브라우저에서 http://localhost:8001/docs 접속하여 대화형 API 문서를 확인할 수 있습니다.
-
-### 2. curl 테스트 스크립트
-
+**요청:**
 ```bash
-#!/bin/bash
-
-# API 테스트 스크립트
-BASE_URL="http://localhost:8001"
-
-echo "🔍 PMark2 API 테스트 시작..."
-
-# 1. 헬스 체크
-echo "1. 헬스 체크 테스트"
-curl -s "$BASE_URL/health" | jq .
-
-# 2. 위치 기반 검색 테스트
-echo -e "\n2. 위치 기반 검색 테스트"
-curl -s -X POST "$BASE_URL/api/v1/chat" \
+curl -X POST "http://localhost:8010/api/v1/autocomplete" \
      -H "Content-Type: application/json" \
-     -d '{"message": "No.1 PE 압력베젤 고장"}' | jq .
-
-# 3. 다른 위치 검색 테스트
-echo -e "\n3. 다른 위치 검색 테스트"
-curl -s -X POST "$BASE_URL/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "석유제품배합/저장 탱크 누설"}' | jq .
-
-# 4. ITEMNO 조회 테스트
-echo -e "\n4. ITEMNO 조회 테스트"
-curl -s -X POST "$BASE_URL/api/v1/chat" \
-     -H "Content-Type: application/json" \
-     -d '{"message": "ITEMNO PE-SE1304B"}' | jq .
-
-echo -e "\n✅ API 테스트 완료"
+     -d '{
+       "partial_input": "No.1 PE",
+       "category": "location"
+     }'
 ```
 
-### 3. Python 테스트 스크립트
+**요청 스키마:**
+```json
+{
+  "partial_input": "string",    // 부분 입력
+  "category": "string"          // 카테고리 (location, equipment, status, priority)
+}
+```
 
-```python
-import requests
-import json
-
-BASE_URL = "http://localhost:8001"
-
-def test_health():
-    """헬스 체크 테스트"""
-    response = requests.get(f"{BASE_URL}/health")
-    print("헬스 체크:", response.json())
-    return response.status_code == 200
-
-def test_chat(message):
-    """채팅 API 테스트"""
-    data = {"message": message}
-    response = requests.post(f"{BASE_URL}/api/v1/chat", json=data)
-    print(f"채팅 테스트 ({message}):", response.json())
-    return response.status_code == 200
-
-def test_work_details():
-    """작업상세 생성 테스트"""
-    data = {
-        "selected_recommendation": {
-            "itemno": "PE-SE1304B",
-            "location": "No.1 PE",
-            "equipType": "[VEDR]Pressure Vessel/ Drum",
-            "statusCode": "고장.결함.수명소진",
-            "priority": "긴급작업(최우선순위)"
-        },
-        "user_message": "No.1 PE 압력베젤 고장"
+**응답 스키마:**
+```json
+{
+  "suggestions": [              // 제안 목록
+    {
+      "text": "string",         // 제안 텍스트
+      "score": 0.95,           // 관련성 점수
+      "category": "string"      // 카테고리
     }
-    response = requests.post(f"{BASE_URL}/api/v1/generate-work-details", json=data)
-    print("작업상세 생성:", response.json())
-    return response.status_code == 200
-
-if __name__ == "__main__":
-    print("🔍 PMark2 API 테스트 시작...")
-    
-    # 테스트 실행
-    test_health()
-    test_chat("No.1 PE 압력베젤 고장")
-    test_chat("석유제품배합/저장 탱크 누설")
-    test_chat("ITEMNO PE-SE1304B")
-    test_work_details()
-    
-    print("✅ API 테스트 완료")
+  ],
+  "total_count": 10            // 총 제안 수
+}
 ```
 
 ---
+
+### 5. 세션 관리 API
+
+#### GET /api/v1/session/{session_id}
+
+특정 세션의 정보를 조회합니다.
+
+**요청:**
+```bash
+curl "http://localhost:8010/api/v1/session/session_123"
+```
+
+**응답 스키마:**
+```json
+{
+  "session_id": "string",       // 세션 ID
+  "created_at": "string",       // 생성 시간
+  "last_activity": "string",    // 마지막 활동 시간
+  "message_count": 5,           // 메시지 수
+  "context_summary": "string",  // 컨텍스트 요약
+  "is_active": true             // 활성 상태
+}
+```
+
+#### DELETE /api/v1/session/{session_id}
+
+특정 세션을 삭제합니다.
+
+**요청:**
+```bash
+curl -X DELETE "http://localhost:8010/api/v1/session/session_123"
+```
+
+**응답:**
+```json
+{
+  "message": "Session deleted successfully",
+  "session_id": "session_123"
+}
+```
+
+## 🔧 에러 처리
+
+### 에러 응답 형식
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "에러 메시지",
+    "details": "상세 정보"
+  }
+}
+```
+
+### 주요 에러 코드
+
+- `INVALID_INPUT`: 잘못된 입력 형식
+- `SESSION_NOT_FOUND`: 세션을 찾을 수 없음
+- `LLM_ERROR`: LLM 서비스 오류
+- `DATABASE_ERROR`: 데이터베이스 오류
+- `VECTOR_SEARCH_ERROR`: 벡터 검색 오류
 
 ## 📊 성능 지표
 
-### 1. 응답 시간
+### 응답 시간
+- **채팅 API**: 평균 2-3초
+- **자동완성 API**: 평균 0.5초
+- **세션 조회**: 평균 0.1초
 
-- **평균 응답 시간**: 2-5초
-- **헬스 체크**: <100ms
-- **채팅 API**: 2-8초 (LLM 호출 포함)
-- **작업상세 생성**: 3-10초 (LLM 호출 포함)
-
-### 2. 처리량
-
-- **동시 요청**: 최대 10개
-- **분당 요청**: 최대 60개
-- **일일 요청**: 최대 10,000개
-
-### 3. 정확도
-
-- **위치 인식 정확도**: 95%+
-- **설비유형 정규화 정확도**: 90%+
-- **현상코드 정규화 정확도**: 85%+
-- **우선순위 인식 정확도**: 90%+
-
----
+### 처리량
+- **동시 사용자**: 최대 100명
+- **초당 요청**: 최대 50회
+- **세션 수**: 최대 1000개
 
 ## 🔒 보안 고려사항
 
-### 1. 현재 상태 (개발 환경)
+### 현재 상태 (개발 환경)
+- 인증 없음
+- 모든 origin 허용 (CORS)
+- 디버그 모드 활성화
 
-- 인증/인가 없음
-- CORS 허용
-- 모든 IP에서 접근 가능
-
-### 2. 프로덕션 권장사항
-
-- API 키 인증 추가
-- Rate Limiting 구현
-- CORS 정책 강화
-- HTTPS 적용
+### 프로덕션 권장사항
+- JWT 토큰 인증 추가
+- CORS 정책 제한
+- Rate limiting 구현
+- HTTPS 강제
 - 로그 보안 강화
 
----
+## 📝 사용 예제
 
-## 📞 지원 및 문의
+### 1. 기본 채팅
 
-### 1. API 문서
+```javascript
+// 프론트엔드에서 채팅 API 호출
+const response = await fetch('http://localhost:8010/api/v1/chat', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    message: 'No.1 PE 압력베젤 고장',
+    session_id: 'user_session_123'
+  })
+});
 
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
+const data = await response.json();
+console.log(data.recommendations);
+```
 
-### 2. 문제 해결
+### 2. 세션 관리
 
-- **로그 확인**: `tail -f backend/logs/app.log`
-- **상태 확인**: `curl http://localhost:8001/health`
-- **이슈 리포트**: GitHub Issues
+```javascript
+// 세션 정보 조회
+const sessionResponse = await fetch('http://localhost:8010/api/v1/session/user_session_123');
+const sessionData = await sessionResponse.json();
 
-### 3. 연락처
+// 세션 삭제
+await fetch('http://localhost:8010/api/v1/session/user_session_123', {
+  method: 'DELETE'
+});
+```
 
-- **기술 지원**: [이메일]
-- **문서**: docs/ 디렉토리
+### 3. 자동완성
 
----
+```javascript
+// 자동완성 요청
+const autocompleteResponse = await fetch('http://localhost:8010/api/v1/autocomplete', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    partial_input: 'No.1 PE',
+    category: 'location'
+  })
+});
 
-**PMark2 API 문서** - 설비관리 시스템의 AI 기반 작업요청 생성 API를 활용하세요. 
+const suggestions = await autocompleteResponse.json();
+```
+
+## 🚀 API 문서 접근
+
+- **Swagger UI**: http://localhost:8010/docs
+- **ReDoc**: http://localhost:8010/redoc
+- **OpenAPI JSON**: http://localhost:8010/openapi.json 

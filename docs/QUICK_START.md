@@ -1,12 +1,13 @@
-# PMark2 빠른 시작 가이드
+# PMark3 빠른 시작 가이드
 
-## 🚀 5분 만에 PMark2 실행하기
+## 🚀 5분 만에 PMark3 실행하기
 
-이 가이드는 PMark2 AI Assistant를 빠르게 설치하고 실행하는 방법을 설명합니다.
+이 가이드는 PMark3 AI Assistant를 빠르게 설치하고 실행하는 방법을 설명합니다.
 
 ## 📋 사전 요구사항
 
 - **Python 3.8+** 설치됨
+- **Node.js 16+** 설치됨
 - **OpenAI API 키** 보유
 - **터미널/명령 프롬프트** 접근 가능
 
@@ -17,25 +18,21 @@
 ```bash
 # 프로젝트 클론 (또는 다운로드)
 git clone [repository-url]
-cd PMark2-Dev
+cd PMark3
 ```
 
-### 2단계: 백엔드 설정
+### 2단계: 개발 환경 설정
 
 ```bash
-# 백엔드 디렉토리로 이동
-cd backend
-
-# 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 의존성 설치
-pip install -r requirements.txt
-
-# 환경변수 설정
-cp ../env.example .env
+# 자동 설정 스크립트 실행
+python scripts/setup_dev.py
 ```
+
+이 스크립트는 다음을 자동으로 수행합니다:
+- 백엔드 가상환경 생성 및 의존성 설치
+- 프론트엔드 의존성 설치
+- 환경 변수 파일 생성
+- 데이터베이스 초기화
 
 ### 3단계: OpenAI API 키 설정
 
@@ -43,190 +40,144 @@ cp ../env.example .env
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-BACKEND_PORT=8001
-DATABASE_URL=sqlite:///data/sample_notifications.db
+BACKEND_PORT=8010
+FRONTEND_PORT=3010
+DATABASE_URL=sqlite:///./data/notifications.db
+VECTOR_DB_PATH=./data/vector_db
 LOG_LEVEL=INFO
 ```
 
-### 4단계: 데이터베이스 초기화
-
-```bash
-# 샘플 데이터 로드
-python -c "from app.database import db_manager; db_manager.load_sample_data()"
-```
-
-### 5단계: 백엔드 실행
+### 4단계: 시스템 실행
 
 ```bash
 # 백엔드 서버 시작
-python run.py
+python scripts/start_backend.py
 ```
 
 **성공 메시지:**
 ```
-🚀 PMark2 Backend Server Starting...
+🚀 PMark3 Backend Server Starting...
 🌐 Server running on:
-   • Local:    http://localhost:8001
-   • Network:  http://192.168.0.69:8001
-📡 Other computers can access: http://192.168.0.69:8001
+   • Local:    http://localhost:8010
+   • Network:  http://192.168.0.69:8010
+📡 Other computers can access: http://192.168.0.69:8010
 🛑 Press Ctrl+C to stop the server
-INFO:     Uvicorn running on http://0.0.0.0:8001
-🚀 PMark2 AI Assistant 시작 중...
+INFO:     Uvicorn running on http://0.0.0.0:8010
+🚀 PMark3 AI Assistant 시작 중...
 ✅ 데이터베이스 초기화 완료
 INFO:     Application startup complete.
 ```
 
-### 6단계: 프론트엔드 실행
-
 새 터미널을 열고:
 
 ```bash
-# 프로젝트 루트로 이동
-cd PMark2-Dev
-
 # 프론트엔드 서버 시작
-python start_frontend.py
+python scripts/start_frontend.py
 ```
 
 **성공 메시지:**
 ```
-🚀 PMark1 Frontend Server Starting...
-📁 Current directory: /path/to/PMark2-Dev
+🚀 PMark3 Frontend Server Starting...
+📁 Current directory: /path/to/PMark3
 🌐 Server running on:
-   • Local:    http://localhost:3001
-   • Network:  http://192.168.0.69:3001
+   • Local:    http://localhost:3010
+   • Network:  http://192.168.0.69:3010
 📡 Other computers can access:
-   • Chatbot:     http://192.168.0.69:3001/
-   • Prototype:   http://192.168.0.69:3001/old
-👥 Multi-user support: ✅ ENABLED
-🛑 Press Ctrl+C to stop the server
-✅ chatbot.html found
-🔥 Server ready for multiple concurrent users!
+   • Chatbot:     http://192.168.0.69:3010/
 ```
 
-### 7단계: 접속 및 테스트
+### 5단계: 접속 확인
 
-브라우저에서 다음 URL로 접속:
+- **웹 브라우저**: http://localhost:3010
+- **백엔드 API**: http://localhost:8010
+- **API 문서**: http://localhost:8010/docs
 
-- **메인 인터페이스**: http://localhost:3001
-- **API 문서**: http://localhost:8001/docs
+## 🔧 시스템 종료
+
+```bash
+# 시스템 종료
+python scripts/stop_dev.py
+```
 
 ## 🧪 빠른 테스트
 
-### 웹 인터페이스 테스트
-
-1. http://localhost:3001 접속
-2. 다음 테스트 메시지 입력:
-
-```
-No.1 PE 압력베젤 고장
-```
-
-**예상 결과:**
-- 위치, 설비유형, 현상코드, 우선순위가 정확히 파싱됨
-- 유사한 작업 3건이 추천됨
-- 각 추천 항목에 유사도 점수 표시
-
-### API 테스트
+### 1. API 테스트
 
 ```bash
 # 헬스 체크
-curl http://localhost:8001/health
+curl http://localhost:8010/health
 
-# 위치 기반 검색 테스트
-curl -X POST "http://localhost:8001/api/v1/chat" \
+# 채팅 API 테스트
+curl -X POST "http://localhost:8010/api/v1/chat" \
      -H "Content-Type: application/json" \
-     -d '{"message": "석유제품배합/저장 탱크 누설"}'
+     -d '{"message": "No.1 PE 압력베젤 고장"}'
 ```
 
-## 🎯 주요 기능 체험
+### 2. 웹 인터페이스 테스트
 
-### 1. 위치 기반 검색
+브라우저에서 http://localhost:3010 접속 후:
 
-다양한 위치로 테스트해보세요:
+1. **기본 테스트**: "No.1 PE 압력베젤 고장" 입력
+2. **위치 테스트**: "석유제품배합/저장 탱크 누설" 입력
+3. **ITEMNO 테스트**: "ITEMNO PE-SE1304B" 입력
 
-```
-No.1 PE 압력베젤 고장
-석유제품배합/저장 탱크 누설
-RFCC 펌프 작동불량 일반작업
-```
+## 🚨 문제 해결
 
-### 2. 유사도 점수 확인
-
-- **100% (녹색)**: 완벽한 매칭
-- **80-99% (녹색)**: 매우 높은 유사도
-- **60-79% (주황)**: 높은 유사도
-- **20-59% (빨강)**: 낮은 유사도
-
-### 3. ITEMNO 편집
-
-추천 결과의 ITEMNO를 클릭하여 직접 수정할 수 있습니다.
-
-### 4. ITEMNO 조회
-
-```
-ITEMNO PE-SE1304B
-```
-
-## 🛠️ 문제 해결
-
-### 포트 충돌
+### 백엔드 서버가 시작되지 않는 경우
 
 ```bash
-# 사용 중인 포트 확인
-lsof -i :8001
-lsof -i :3001
+# 포트 확인
+lsof -i :8010
 
 # 프로세스 종료
-kill -9 [PID]
+pkill -f "python.*start_backend.py"
+
+# 가상환경 재활성화
+cd backend
+source venv/bin/activate
+python scripts/start_backend.py
+```
+
+### 프론트엔드 서버가 시작되지 않는 경우
+
+```bash
+# 포트 확인
+lsof -i :3010
+
+# Node.js 의존성 재설치
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### 데이터베이스 오류
+
+```bash
+# 데이터베이스 재초기화
+python scripts/init_database.py
 ```
 
 ### OpenAI API 오류
 
-1. `.env` 파일에서 API 키 확인
-2. OpenAI 계정에서 API 키 유효성 확인
-3. API 사용량 한도 확인
-
-### 가상환경 문제
-
 ```bash
-cd backend
-source venv/bin/activate
-pip install -r requirements.txt
+# API 키 확인
+echo $OPENAI_API_KEY
+
+# .env 파일 확인
+cat .env
 ```
 
-## 📊 성능 확인
+## 📊 시스템 상태 확인
 
-### 응답 시간
-
-- **헬스 체크**: <100ms
-- **채팅 API**: 2-8초 (LLM 호출 포함)
-- **작업상세 생성**: 3-10초
-
-### 정확도
-
-- **위치 인식**: 95%+
-- **설비유형 정규화**: 90%+
-- **현상코드 정규화**: 85%+
-- **우선순위 인식**: 90%+
-
-## 🔄 시스템 재시작
-
-### 전체 재시작
+### 포트 사용 현황
 
 ```bash
-# 1. 모든 프로세스 종료
-pkill -f "python run.py"
-pkill -f "python start_frontend.py"
+# 백엔드 포트 (8010)
+lsof -i :8010
 
-# 2. 백엔드 재시작
-cd backend && source venv/bin/activate && python run.py
-
-# 3. 프론트엔드 재시작 (새 터미널)
-cd PMark2-Dev && python start_frontend.py
+# 프론트엔드 포트 (3010)
+lsof -i :3010
 ```
-
-## 📞 지원
 
 ### 로그 확인
 
@@ -234,30 +185,75 @@ cd PMark2-Dev && python start_frontend.py
 # 백엔드 로그
 tail -f backend/logs/app.log
 
-# 실시간 모니터링
-htop
+# 프론트엔드 로그
+tail -f frontend/logs/server.log
 ```
 
-### API 문서
+## 🔍 주요 기능 테스트
 
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
+### 1. 세션 관리 테스트
 
-### 연락처
+```bash
+# 세션 생성
+curl -X POST "http://localhost:8010/api/v1/chat" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "안녕하세요"}'
 
-- **기술 지원**: [이메일]
-- **문서**: docs/ 디렉토리
-- **이슈 리포트**: GitHub Issues
+# 세션 정보 조회 (응답에서 session_id 확인)
+curl "http://localhost:8010/api/v1/session/{session_id}"
+```
 
-## 🎉 축하합니다!
+### 2. 자동완성 테스트
 
-PMark2 AI Assistant가 성공적으로 실행되었습니다!
+```bash
+# 위치 자동완성
+curl -X POST "http://localhost:8010/api/v1/autocomplete" \
+     -H "Content-Type: application/json" \
+     -d '{"partial_input": "No.1 PE", "category": "location"}'
+```
 
-**다음 단계:**
-1. 다양한 테스트 케이스로 기능 체험
-2. API 문서를 통한 개발자 도구 활용
-3. 실제 업무 시나리오에 적용
+### 3. 벡터 검색 테스트
+
+```bash
+# 유사도 검색
+curl -X POST "http://localhost:8010/api/v1/chat" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "펌프 고장", "session_id": "test_session"}'
+```
+
+## 📱 접속 정보 요약
+
+| 서비스 | URL | 포트 | 설명 |
+|--------|-----|------|------|
+| 웹 인터페이스 | http://localhost:3010 | 3010 | 메인 챗봇 인터페이스 |
+| 백엔드 API | http://localhost:8010 | 8010 | RESTful API 서버 |
+| API 문서 | http://localhost:8010/docs | 8010 | Swagger UI |
+| API 문서 (ReDoc) | http://localhost:8010/redoc | 8010 | ReDoc 문서 |
+
+## ⚡ 빠른 체크리스트
+
+시스템 시작 전 확인사항:
+- [ ] 프로젝트 디렉토리: `/path/to/PMark3`
+- [ ] 백엔드 가상환경: `backend/venv/`
+- [ ] 환경 변수: `.env` (OpenAI API 키)
+- [ ] 데이터베이스: `data/notifications.db`
+- [ ] 벡터 DB: `data/vector_db/`
+
+시스템 시작 후 확인사항:
+- [ ] 백엔드 서버: 포트 8010 응답
+- [ ] 프론트엔드 서버: 포트 3010 응답
+- [ ] 웹 브라우저 접속 가능
+- [ ] API 호출 정상 작동
+- [ ] 세션 관리 정상 작동
+- [ ] 자동완성 기능 정상 작동
+
+## 🆘 추가 도움말
+
+- **개발 가이드**: [docs/DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)
+- **API 문서**: [docs/API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+- **시스템 아키텍처**: [docs/SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)
+- **노트북 예제**: [notebooks/](../notebooks/)
 
 ---
 
-**PMark2 빠른 시작 가이드** - 5분 만에 AI 기반 설비관리 시스템을 경험하세요! 
+**PMark3 빠른 시작 가이드** - 세션 관리와 벡터 검색을 포함한 고급 AI 작업요청 생성 시스템을 5분 만에 실행하세요! 🚀 
