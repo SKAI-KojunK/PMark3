@@ -1,14 +1,55 @@
 """
-PMark1 AI Assistant - LLM 기반 용어 정규화 엔진
+PMark3 LLM 기반 용어 정규화 엔진
 
-이 파일은 OpenAI GPT-4o를 활용하여 자연어 입력을 표준 용어로 정규화하는 엔진입니다.
-사전에 정의되지 않은 표현, 오타, 띄어쓰기 오류 등도 AI가 이해하여 정확한 매칭을 제공합니다.
+=== 모듈 개요 ===
+자연어 입력의 오타, 띄어쓰기, 한영 혼용 등을 AI로 해석하여 표준 용어로 변환하는 핵심 모듈입니다.
+DB의 실제 데이터를 동적으로 로드하여 LLM 프롬프트에 제공하는 방식으로 정확도를 극대화합니다.
 
-주요 담당자: AI/ML 엔지니어, 백엔드 개발자
-수정 시 주의사항:
-- OpenAI API 키가 필요합니다 (config.py에서 설정)
-- 표준 용어 사전은 실제 DB 데이터와 일치해야 합니다
-- 프롬프트 수정 시 일관성 있는 응답을 위해 temperature를 낮게 유지
+=== Production 전환 주요 포인트 ===
+🔄 벡터 기반 정규화: LLM 방식 → 벡터 임베딩 기반 유사도 검색으로 전환
+🚀 성능 최적화: 배치 처리, 캐싱, 비동기 처리 도입
+🤖 로컬 LLM 연동: OpenAI → vLLM 기반 다국어 모델 (Mistral 7B/Qwen3 14B)
+📊 정확도 향상: 사용자 피드백 학습 및 동적 표준 용어 업데이트
+
+=== 현재 vs Production 비교 ===
+📋 현재 방식:
+- LLM 기반 정규화 (OpenAI GPT-4)
+- DB에서 표준 용어 동적 로드
+- 단일 요청 처리
+- 응답 시간: ~1-2초
+
+🚀 Production 방식:
+- 벡터 임베딩 기반 정규화 (SentenceTransformer)
+- 실시간 벡터 검색 (FAISS/Qdrant)
+- 배치 처리 지원
+- 응답 시간: ~100-200ms (10배 향상)
+
+=== 연계 시스템 ===
+⬅️ 입력단:
+- agents/parser.py: _normalize_extracted_terms() → normalize_term()
+- database.py: search_similar_notifications() → normalize_term()
+
+➡️ 출력단:
+- logic/recommender.py: 정규화된 용어로 유사도 계산
+- database.py: 표준 용어로 DB 검색 필터 생성
+
+=== AI 연구원 실험 포인트 ===
+1. 벡터 모델 비교: ko-sbert vs multilingual-e5 vs OpenAI embedding
+2. 유사도 임계값 최적화: confidence threshold 조정 실험
+3. 하이브리드 접근: 룰 기반 + 벡터 기반 + LLM 폴백 조합
+4. 캐싱 전략: 자주 사용되는 용어 조합 사전 캐싱
+
+=== 개발팀 구현 가이드 ===
+🏗️ 벡터 기반 정규화 아키텍처:
+- VectorBasedNormalizer 클래스 구현
+- 표준 용어 벡터 인덱스 구축 (startup 시)
+- 실시간 유사도 검색 (cosine similarity)
+- LLM 폴백 메커니즘 (신뢰도 낮은 경우)
+
+📈 성능 최적화:
+- 결과 캐싱 (Redis/Azure Cache)
+- 배치 처리 API 엔드포인트
+- 비동기 정규화 큐 (Azure Service Bus)
 """
 
 from openai import OpenAI
@@ -20,22 +61,83 @@ import sqlite3
 
 class LLMNormalizer:
     """
-    LLM 기반 용어 정규화 엔진
+    LLM 기반 용어 정규화 엔진 (현재 프로토타입)
     
-    사용처:
-    - database.py: search_similar_notifications()에서 입력값 정규화
-    - parser.py: _normalize_extracted_terms()에서 추출된 용어 정규화
+    === 현재 아키텍처에서의 역할 ===
+    🎯 용어 표준화: 오타, 띄어쓰기, 한영 혼용 → 표준 용어 변환
+    🔍 동적 용어 로드: DB에서 실시간 표준 용어 목록 추출
+    📊 신뢰도 평가: 정규화 결과의 정확도 점수 제공
+    🤝 다중 카테고리: equipment, location, status, priority 지원
     
-    연계 파일:
-    - config.py: OpenAI API 설정
-    - database.py: normalize_term() 메서드에서 호출
-    - parser.py: _normalize_extracted_terms()에서 호출
+    === Production 전환 시 변경사항 ===
+    🔄 벡터 기반 정규화:
+    - normalize_term() → vector_normalize_term()
+    - LLM 프롬프트 → 벡터 유사도 검색
+    - 응답 시간: 1-2초 → 100-200ms
     
-    담당자 수정 가이드:
-    - standard_terms 사전은 실제 DB의 equipType, location, statusCode 값과 일치해야 함
-    - 새로운 카테고리 추가 시 standard_terms에 추가
-    - 프롬프트 수정 시 예시도 함께 업데이트
-    - temperature는 0.1 이하로 유지하여 일관성 확보
+    🚀 성능 최적화:
+    - batch_normalize() → async_batch_normalize()
+    - 결과 캐싱 (TTL: 1시간)
+    - 백그라운드 표준 용어 업데이트
+    
+    🤖 하이브리드 접근:
+    - 1차: 벡터 유사도 검색 (빠른 응답)
+    - 2차: LLM 폴백 (신뢰도 < 0.8인 경우)
+    - 3차: 룰 기반 매칭 (알려진 패턴)
+    
+    === 연계 지점 상세 분석 ===
+    ⬅️ 호출하는 모듈:
+    - agents/parser.py._normalize_extracted_terms()
+      → 파싱된 4개 필드 (location, equipment, status, priority) 정규화
+    - database.py.search_similar_notifications()
+      → 검색 쿼리의 필터 값 정규화
+    
+    ➡️ 호출되는 모듈:
+    - database.py._get_db_terms() → 표준 용어 목록 동적 추출
+    - config.py → OpenAI API 설정 참조
+    
+    === AI 연구원 실험 가이드 ===
+    📝 정규화 품질 개선:
+    - notebooks/02_normalizer_experiment.ipynb 활용
+    - Ground Truth 데이터셋 구축 및 평가
+    - confidence threshold 최적화 (현재: 0.3)
+    
+    🔬 벡터 모델 실험:
+    - SentenceTransformer('jhgan/ko-sbert-multitask') 테스트
+    - OpenAI embedding vs 로컬 모델 성능 비교
+    - 다국어 모델 평가 (한국어 특화 vs 다국어)
+    
+    === 개발팀 구현 참고 ===
+    🏗️ 벡터 기반 정규화 구현:
+    ```python
+    class VectorBasedNormalizer:
+        def __init__(self, vector_db, embedding_model):
+            self.vector_db = vector_db
+            self.model = SentenceTransformer(embedding_model)
+        
+        async def normalize_term(self, term, category):
+            # 1. 입력 용어 임베딩
+            term_embedding = self.model.encode(term)
+            
+            # 2. 벡터 DB 검색
+            results = await self.vector_db.search(
+                embedding=term_embedding,
+                collection=f"standard_terms_{category}",
+                top_k=5, threshold=0.8
+            )
+            
+            # 3. 최고 유사도 반환 또는 LLM 폴백
+            if results and results[0].similarity > 0.8:
+                return results[0].text, results[0].similarity
+            else:
+                return await self.llm_fallback(term, category)
+    ```
+    
+    📊 성능 모니터링 지표:
+    - 정규화 정확도 (Ground Truth 대비)
+    - 평균 응답 시간 (ms)
+    - 캐시 히트율 (%)
+    - LLM 폴백 빈도 (%)
     """
     
     def __init__(self):

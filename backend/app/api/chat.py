@@ -1,5 +1,5 @@
 """
-PMark2.5 AI Assistant - 채팅 API (세션 관리 기능 포함)
+PMark3 AI Assistant - 채팅 API (세션 관리 기능 포함)
 
 이 파일은 사용자와의 대화를 처리하는 메인 API 엔드포인트입니다.
 사용자 입력을 파싱하고, 세션 기반 컨텍스트를 유지하며, 추천 엔진을 통해 유사한 작업을 찾아 응답을 생성합니다.
@@ -72,7 +72,7 @@ async def chat(request: ChatRequest):
 @router.post("/chat/v2", response_model=EnhancedChatResponse)
 async def chat_v2(request: EnhancedChatRequest):
     """
-    세션 기반 채팅 엔드포인트 (PMark2.5 고급 기능)
+    세션 기반 채팅 엔드포인트 (PMark3 고급 기능)
     
     세션 관리를 통해 멀티턴 대화와 누적 컨텍스트를 지원합니다.
     

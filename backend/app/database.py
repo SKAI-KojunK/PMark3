@@ -1,14 +1,87 @@
 """
-PMark1 AI Assistant - 데이터베이스 관리 모듈
+PMark3 데이터베이스 관리 모듈
 
-이 파일은 SQLite 데이터베이스와의 상호작용을 담당합니다.
-설비관리 시스템의 알림 데이터를 검색하고, LLM 정규화 엔진을 활용하여 유사한 작업을 찾습니다.
+=== 모듈 개요 ===
+SQLite 데이터베이스와의 모든 상호작용을 담당하는 핵심 모듈입니다.
+위치 기반 우선 검색, 정규화 엔진 연동, 유사도 기반 추천을 지원합니다.
 
-주요 담당자: 백엔드 개발자, 데이터베이스 관리자
-수정 시 주의사항:
-- DB 스키마 변경 시 기존 데이터 마이그레이션 필요
-- LLM 정규화 엔진과 연동되어 정확한 용어 매칭 제공
-- 성능 최적화를 위해 인덱스 설정 권장
+=== Production 전환 주요 포인트 ===
+🔄 Azure SQL Database: SQLite → Azure SQL Database 마이그레이션
+🚀 연결 풀링: 동시 접속 최적화 및 트랜잭션 관리
+📊 쿼리 최적화: 인덱스 힌트, 실행 계획 분석
+🔍 벡터 검색 통합: 기존 키워드 검색 + 벡터 유사도 검색
+
+=== 현재 vs Production 비교 ===
+📋 현재 방식:
+- SQLite 로컬 DB
+- 단순 LIKE 쿼리 기반 검색
+- 순차적 검색 (위치 → 설비 → 현상)
+- 정규화 엔진 연동 (사후 처리)
+
+🚀 Production 방식:
+- Azure SQL Database (고가용성)
+- 최적화된 T-SQL 쿼리
+- 병렬 검색 및 인덱스 최적화
+- 벡터 DB 하이브리드 검색
+
+=== 위치 기반 검색 구현 ===
+🎯 현재 검증된 기능: 
+- search_similar_notifications()에서 location/process 우선 매칭
+- 정규화 엔진을 통한 용어 표준화
+- 유사도 점수 기반 결과 순위화
+
+🔍 검색 전략:
+1. 위치 정확 매칭 (location = ?)
+2. 공정 부분 매칭 (process LIKE ?)
+3. 설비유형 매칭 (equipType = ?)
+4. 현상코드 매칭 (statusCode = ?)
+
+=== 연계 시스템 ===
+⬅️ 입력단:
+- logic/recommender.py: search_similar_notifications() 호출
+- logic/normalizer.py: _get_db_terms() → 표준 용어 추출
+- agents/parser.py: 간접 호출 (정규화 통해)
+
+➡️ 출력단:
+- models.py: Recommendation 객체 생성용 데이터 제공
+- Excel 파일: 초기 데이터 로드 및 동기화
+
+=== AI 연구원 실험 포인트 ===
+1. 검색 알고리즘 개선: notebooks/04_database_experiment.ipynb 활용
+2. 인덱싱 전략: 복합 인덱스 vs 단일 인덱스 성능 비교
+3. 쿼리 최적화: LIKE vs MATCH vs 벡터 검색 성능 측정
+4. 캐싱 전략: 자주 검색되는 패턴 사전 캐싱
+
+=== 개발팀 구현 가이드 ===
+🏗️ Azure SQL 마이그레이션:
+```python
+class AzureDatabaseManager(DatabaseInterface):
+    def __init__(self, connection_string):
+        self.engine = create_engine(
+            connection_string,
+            pool_size=20,
+            max_overflow=0,
+            pool_pre_ping=True
+        )
+    
+    def search_similar_notifications(self, **kwargs):
+        # T-SQL 최적화 쿼리
+        query = text('''
+            SELECT *, 
+            (CASE WHEN location = :location THEN 35 ELSE 0 END +
+             CASE WHEN equipType = :equipment THEN 35 ELSE 0 END +
+             CASE WHEN statusCode = :status THEN 20 ELSE 0 END) / 90.0 as similarity_score
+            FROM notification_history 
+            WHERE location = :location OR process LIKE :location
+            ORDER BY similarity_score DESC, created_at DESC
+        ''')
+```
+
+📊 성능 모니터링:
+- 쿼리 실행 시간 (목표: <100ms)
+- 연결 풀 사용률 (목표: <80%)
+- 인덱스 히트율 (목표: >95%)
+- 데이터 증가율 추적
 """
 
 import sqlite3
@@ -21,21 +94,87 @@ import logging
 
 class DatabaseManager:
     """
-    데이터베이스 관리 클래스
+    데이터베이스 관리 핵심 클래스 (현재 프로토타입)
     
-    사용처:
-    - recommender.py: RecommendationEngine에서 유사 작업 검색
-    - chat.py: 직접 호출하여 데이터 검증
+    === 현재 아키텍처에서의 역할 ===
+    🎯 위치 우선 검색: location/process 기반 우선 매칭 구현
+    🔍 유사도 계산: 다중 필드 매칭을 통한 검색 결과 순위화
+    📊 정규화 연동: LLM 정규화 엔진과 협력하여 표준 용어 매칭
+    🤝 Excel 연동: 초기 데이터 로드 및 동기화 지원
     
-    연계 파일:
-    - models.py: Recommendation 모델 사용
-    - logic/normalizer.py: LLM 정규화 엔진 사용
-    - config.py: 데이터베이스 경로 설정
+    === Production 전환 시 변경사항 ===
+    🔄 LangGraph 노드화:
+    - search_similar_notifications() → database_search_node()
+    - 비동기 처리 지원 및 배치 쿼리
+    - 상태 관리 및 에러 복구
     
-    담당자 수정 가이드:
-    - DB 스키마 변경 시 create_tables() 메서드 수정
-    - 새로운 검색 조건 추가 시 search_similar_notifications() 수정
-    - 성능 최적화를 위해 인덱스 추가 고려
+    🏗️ Azure SQL Database 연동:
+    ```python
+    # 현재: SQLite 동기 처리
+    self.conn = sqlite3.connect(self.db_path)
+    cursor = self.conn.execute(query, params)
+    
+    # Production: Azure SQL 비동기 처리
+    async with self.pool.acquire() as conn:
+        async with conn.execute(query, params) as cursor:
+            results = await cursor.fetchall()
+    ```
+    
+    📈 성능 최적화:
+    - 연결 풀링: SQLAlchemy 엔진 활용
+    - 쿼리 캐싱: Redis 기반 결과 캐싱
+    - 인덱스 최적화: 복합 인덱스 및 실행 계획 분석
+    
+    === 위치 기반 검색 상세 구현 ===
+    🎯 검색 우선순위 (현재 구현됨):
+    1. 위치 정확 매칭: WHERE location = ?
+    2. 공정 부분 매칭: WHERE process LIKE ?%
+    3. 설비유형 매칭: WHERE equipType = ?
+    4. 현상코드 매칭: WHERE statusCode = ?
+    
+    💡 검색 전략:
+    - 정규화 전처리: 입력값 → 표준 용어 변환
+    - 단계별 검색: 위치 → 설비 → 현상 순서
+    - 유사도 점수: 매칭 필드 수에 따른 가중치 적용
+    
+    === 연계 지점 상세 분석 ===
+    ⬅️ 호출하는 모듈:
+    - logic/recommender.py.get_recommendations() → search_similar_notifications()
+    - logic/normalizer.py._get_db_terms() → 표준 용어 동적 로드
+    - api/chat.py → 직접 데이터 검증 호출
+    
+    ➡️ 호출되는 모듈:
+    - logic/normalizer.py.normalize_term() → 검색 전 용어 정규화
+    - config.py → 데이터베이스 경로 및 설정 참조
+    - Excel 파일 → 초기 데이터 소스
+    
+    === AI 연구원 실험 가이드 ===
+    📝 검색 성능 개선:
+    - notebooks/04_database_experiment.ipynb 활용
+    - 쿼리 패턴 분석 및 최적화
+    - 인덱스 효과 측정 및 튜닝
+    
+    🔬 검색 정확도 평가:
+    - 위치 기반 검색 정확도 측정
+    - 사용자 의도 vs 검색 결과 분석
+    - False Positive/Negative 케이스 분석
+    
+    === 개발팀 구현 참고 ===
+    🏗️ Production 구현 포인트:
+    - 데이터베이스 추상화 레이어 구현
+    - 트랜잭션 관리 및 롤백 메커니즘
+    - 연결 상태 모니터링 및 자동 복구
+    
+    📊 모니터링 지표:
+    - 쿼리 실행 시간 분포
+    - 검색 결과 정확도 (사용자 피드백 기반)
+    - 데이터베이스 연결 안정성
+    - 인덱스 활용률 및 테이블 스캔 비율
+    
+    🎯 확장성 고려사항:
+    - 샤딩 전략 (데이터 분산)
+    - 읽기 복제본 활용 (읽기 성능 향상)
+    - 데이터 아카이빙 정책 (오래된 데이터 관리)
     """
     
     def __init__(self):

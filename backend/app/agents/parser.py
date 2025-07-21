@@ -1,14 +1,32 @@
 """
-PMark1 AI Assistant - 자연어 입력 파서
+PMark3 자연어 입력 파서 모듈
 
-이 파일은 사용자의 자연어 입력을 분석하여 구조화된 데이터로 변환합니다.
-OpenAI GPT-4o를 활용하여 시나리오를 판단하고, 관련 정보를 추출합니다.
+=== 모듈 개요 ===
+사용자의 자연어 입력을 분석하여 구조화된 데이터로 변환하는 핵심 모듈입니다.
+OpenAI GPT-4를 활용하여 시나리오 판단 및 정보 추출을 수행합니다.
 
-주요 담당자: AI/ML 엔지니어, 백엔드 개발자
-수정 시 주의사항:
-- OpenAI API 키가 필요합니다 (config.py에서 설정)
-- 시나리오 판단 로직은 비즈니스 요구사항에 따라 조정
-- 추출 필드는 models.py의 ParsedInput과 일치해야 함
+=== Production 전환 주요 포인트 ===
+🔄 LangGraph 노드 전환: 이 클래스는 LangGraph의 파싱 노드로 전환됩니다
+🤖 로컬 LLM 연동: OpenAI → vLLM 기반 Mistral 7B/Qwen3 14B로 전환 예정
+📊 성능 최적화: 배치 처리, 캐싱, 재시도 로직 추가 필요
+🔍 벡터 검색 통합: 정규화 로직과 벡터 임베딩 시스템 연동 예정
+
+=== 연계 시스템 ===
+• 입력: chat.py (사용자 메시지) → session_manager.py (컨텍스트)
+• 처리: normalizer.py (용어 정규화) → database.py (검증)  
+• 출력: recommender.py (추천 엔진) → response_generator.py
+
+=== AI 연구원 실험 포인트 ===
+1. 프롬프트 엔지니어링: _create_scenario_1_prompt() 최적화
+2. 모델 성능 비교: GPT-4 vs Mistral 7B vs Qwen3 14B
+3. 시나리오 분기 로직: _determine_scenario() 개선
+4. 정확도 측정: confidence 점수 산정 알고리즘 개선
+
+=== 개발팀 참고사항 ===
+• LangGraph 전환 시 각 메서드를 독립적인 노드로 분리
+• Azure 배포 시 환경변수 기반 설정 관리 필요
+• Production 모니터링: 파싱 정확도, 응답 시간, 에러율 추적
+• 멀티턴 대화 지원: 세션 상태 관리 및 컨텍스트 누적 로직
 """
 
 import re
@@ -22,21 +40,56 @@ from difflib import SequenceMatcher
 
 class InputParser:
     """
-    자연어 입력 파서 클래스
+    자연어 입력 파서 핵심 클래스
     
-    사용처:
-    - chat.py: POST /api/v1/chat에서 사용자 입력 분석
-    - recommender.py: RecommendationEngine에서 파싱 결과 활용
+    === 현재 아키텍처에서의 역할 ===
+    🎯 시나리오 판단: S1(자연어) vs S2(ITEMNO) vs S3(컨텍스트 기반)
+    🔍 정보 추출: location, equipment_type, status_code, priority
+    🤝 정규화 연동: normalizer.py와 협력하여 표준 용어 매핑
+    📊 신뢰도 평가: 추출 결과의 confidence 점수 산정
     
-    연계 파일:
-    - models.py: ParsedInput 모델 사용
-    - config.py: OpenAI API 설정
-    - logic/normalizer.py: 추출된 용어 정규화
+    === Production 전환 시 변경사항 ===
+    🔄 LangGraph 노드화:
+    - parse_input_with_context() → parsing_node()
+    - _determine_scenario() → scenario_router_node() 
+    - 각 시나리오별 독립 노드 분리
     
-    담당자 수정 가이드:
-    - 새로운 시나리오 추가 시 _create_scenario_prompt() 메서드 수정
-    - 추출 필드 변경 시 models.py의 ParsedInput도 함께 수정
-    - 프롬프트 수정 시 일관성 있는 응답을 위해 temperature 조정
+    🤖 로컬 LLM 통합:
+    - OpenAI 클라이언트 → vLLM 엔드포인트 호출
+    - 배치 처리 지원 (동일 세션 내 다중 요청)
+    - 자동 재시도 및 타임아웃 관리
+    
+    📈 성능 최적화:
+    - 결과 캐싱 (Redis/Azure Cache 연동)
+    - 응답 시간 모니터링 및 알림
+    - 메모리 사용량 추적
+    
+    === 연계 지점 분석 ===
+    ⬅️ 입력단: 
+    - api/chat.py: chat_endpoint() → parse_input()
+    - session_manager.py: 컨텍스트 정보 제공
+    
+    ➡️ 출력단:
+    - logic/normalizer.py: _normalize_extracted_terms() 호출
+    - logic/recommender.py: ParsedInput 객체 전달
+    - database.py: 검색 필터 생성
+    
+    === AI 연구원 실험 가이드 ===
+    📝 프롬프트 최적화: notebooks/01_parser_experiment.ipynb 활용
+    🔬 모델 비교: GPT-4 vs Mistral 7B vs Qwen3 14B 성능 벤치마킹
+    📊 정확도 측정: Ground Truth 데이터셋 기반 평가
+    🎛️ 하이퍼파라미터: temperature, max_tokens, top_p 조정 실험
+    
+    === 개발팀 구현 가이드 ===
+    🏗️ 아키텍처 설계:
+    - 상태 관리: PMark3WorkflowState 활용
+    - 에러 처리: 재시도 로직 및 폴백 메커니즘
+    - 모니터링: 파싱 정확도, 응답 시간, 에러율 추적
+    
+    🚀 배포 고려사항:
+    - 환경별 설정: dev/staging/prod 분리
+    - 스케일링: HPA 기반 자동 확장
+    - 보안: API 키 관리 (Azure Key Vault)
     """
     
     def __init__(self):
@@ -121,7 +174,7 @@ class InputParser:
     
     def parse_input_with_context(self, user_input: str, conversation_history: list = None, session_id: str = None) -> ParsedInput:
         """
-        세션 컨텍스트를 포함한 입력 파싱 (PMark2.5 고급 기능)
+        세션 컨텍스트를 포함한 입력 파싱 (PMark3 고급 기능)
         
         Args:
             user_input: 사용자 입력 메시지

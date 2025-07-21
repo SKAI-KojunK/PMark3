@@ -1,14 +1,71 @@
 """
-PMark1 AI Assistant - 추천 엔진
+PMark3 지능형 추천 엔진
 
-이 파일은 파싱된 사용자 입력을 기반으로 유사한 작업을 검색하고 추천하는 엔진입니다.
-데이터베이스에서 유사한 알림 데이터를 찾아 우선순위와 유사도 점수를 계산하여 추천 목록을 생성합니다.
+=== 모듈 개요 ===
+파싱된 사용자 입력을 기반으로 유사한 작업을 검색하고 우선순위별로 추천하는 핵심 엔진입니다.
+다중 유사도 계산 알고리즘과 LLM 기반 작업상세 생성으로 정확하고 유용한 추천을 제공합니다.
 
-주요 담당자: AI/ML 엔지니어, 백엔드 개발자
-수정 시 주의사항:
-- 추천 알고리즘은 비즈니스 로직에 따라 조정 가능
-- 유사도 점수 계산 로직은 database.py와 연동
-- LLM을 활용한 작업명/상세 생성 기능 포함
+=== Production 전환 주요 포인트 ===
+🔄 벡터 검색 통합: 문자열 매칭 → 의미적 유사도 검색으로 진화
+🤖 협업 필터링: 사용자 행동 데이터 기반 개인화 추천 추가
+📊 실시간 학습: 사용자 피드백을 통한 추천 모델 지속 개선
+🚀 성능 최적화: 캐싱, 배치 처리, 비동기 처리로 응답 속도 향상
+
+=== 현재 vs Production 추천 방식 비교 ===
+📋 현재 방식:
+- 키워드 기반 검색 (database.py 활용)
+- 문자열 유사도 계산 (Levenshtein 거리)
+- 가중치 기반 점수 산정 (equipment: 35%, location: 35%, status: 20%, priority: 10%)
+- LLM 기반 작업상세 생성
+
+🚀 Production 방식:
+- 하이브리드 검색: 키워드 + 벡터 + 협업 필터링
+- 의미적 유사도: 임베딩 기반 코사인 유사도
+- 동적 가중치: 사용자별/상황별 적응적 가중치
+- 실시간 개인화: 사용자 히스토리 기반 추천
+
+=== 연계 시스템 상세 ===
+⬅️ 입력단:
+- agents/parser.py: ParsedInput 객체 → get_recommendations()
+- api/chat.py: 사용자 세션 → 추천 목록 생성
+- session_manager.py: 사용자 히스토리 → 개인화 추천
+
+➡️ 출력단:
+- database.py: search_similar_notifications() → 후보 데이터 수집
+- api/work_details.py: 선택된 추천 → 상세 작업 정보 생성
+- frontend: 추천 목록 → 사용자 인터페이스 표시
+
+=== AI 연구원 실험 포인트 ===
+1. 유사도 알고리즘 개선: notebooks/03_recommender_experiment.ipynb 활용
+2. 가중치 최적화: 설비별/상황별 최적 가중치 탐색
+3. 벡터 검색 통합: SentenceTransformer + FAISS 성능 비교
+4. 협업 필터링: Matrix Factorization vs Deep Learning 기반 추천
+
+=== 개발팀 구현 가이드 ===
+🏗️ 벡터 기반 추천 아키텍처:
+```python
+class VectorRecommendationEngine:
+    def __init__(self, vector_db, embedding_model):
+        self.vector_db = vector_db
+        self.embedding_model = embedding_model
+        self.traditional_engine = RecommendationEngine()
+    
+    async def get_hybrid_recommendations(self, parsed_input, limit=5):
+        # 1. 벡터 검색 (의미적 유사도)
+        vector_results = await self.vector_search(parsed_input)
+        
+        # 2. 전통적 키워드 검색
+        keyword_results = self.traditional_engine.get_recommendations(parsed_input)
+        
+        # 3. 결과 융합 및 재순위화
+        return await self.merge_and_rerank(vector_results, keyword_results)
+```
+
+📈 성능 모니터링 지표:
+- 추천 정확도: Precision@K, Recall@K, F1-Score
+- 사용자 만족도: 클릭률, 선택률, 완료율
+- 시스템 성능: 평균 응답 시간, 처리량, 메모리 사용량
+- 개인화 효과: 개인화 vs 일반 추천 성능 비교
 """
 
 from openai import OpenAI
@@ -22,21 +79,80 @@ import logging
 
 class RecommendationEngine:
     """
-    추천 엔진 클래스
+    지능형 추천 엔진 핵심 클래스 (현재 프로토타입)
     
-    사용처:
-    - chat.py: POST /api/v1/chat에서 추천 목록 생성
-    - work_details.py: 선택된 추천 항목의 작업상세 생성
+    === 현재 아키텍처에서의 역할 ===
+    🎯 시나리오별 추천: S1(자연어) vs S2(ITEMNO) 분기 처리
+    🔍 유사도 계산: 다중 필드 가중치 기반 점수 산정
+    📊 우선순위 처리: 긴급/우선/일반 작업 분류 및 추천
+    🤖 LLM 연동: 작업명/상세 자동 생성 (누락 시)
     
-    연계 파일:
-    - models.py: ParsedInput, Recommendation 모델 사용
-    - database.py: search_similar_notifications() 호출
-    - logic/normalizer.py: 이미 정규화된 입력 사용
+    === Production 전환 시 변경사항 ===
+    🔄 LangGraph 노드화:
+    - get_recommendations() → recommendation_node()
+    - 시나리오별 분기 → 조건부 엣지 처리
+    - 비동기 처리 지원 및 상태 관리
     
-    담당자 수정 가이드:
-    - 추천 알고리즘 개선 시 get_recommendations() 메서드 수정
-    - 유사도 점수 임계값 조정으로 추천 품질 제어
-    - 새로운 추천 기준 추가 가능
+    🚀 벡터 검색 통합:
+    ```python
+    # 현재: 키워드 기반 검색
+    similar_notifications = db_manager.search_similar_notifications(
+        equip_type=parsed_input.equipment_type,
+        location=parsed_input.location,
+        status_code=parsed_input.status_code
+    )
+    
+    # Production: 하이브리드 검색
+    async def get_hybrid_recommendations(self, parsed_input):
+        # 1. 벡터 검색 (의미적 유사도)
+        vector_results = await self.vector_search(parsed_input)
+        # 2. 키워드 검색 (기존 방식)
+        keyword_results = await self.keyword_search(parsed_input)
+        # 3. 결과 융합 및 재순위화
+        return await self.merge_and_rerank(vector_results, keyword_results)
+    ```
+    
+    📈 개인화 추천:
+    - 사용자 히스토리 분석 → 선호도 학습
+    - 협업 필터링 → 유사 사용자 기반 추천
+    - A/B 테스트 → 추천 알고리즘 성능 비교
+    
+    === 연계 지점 상세 분석 ===
+    ⬅️ 호출하는 모듈:
+    - api/chat.py.chat_endpoint() → get_recommendations()
+    - api/work_details.py → get_recommendation_by_itemno()
+    
+    ➡️ 호출되는 모듈:
+    - database.py.search_similar_notifications() → 후보 데이터 수집
+    - database.py.search_by_itemno() → ITEMNO 기반 검색
+    - OpenAI API → 작업상세 자동 생성
+    
+    === AI 연구원 실험 가이드 ===
+    📝 유사도 개선 실험:
+    - notebooks/03_recommender_experiment.ipynb 활용
+    - 가중치 조정: equipment(35%) vs location(35%) vs status(20%) vs priority(10%)
+    - 새로운 유사도 메트릭: TF-IDF, BM25, 의미적 유사도
+    
+    🔬 추천 품질 평가:
+    - Precision@K, Recall@K 계산
+    - 사용자 피드백 수집 및 분석
+    - 다양성 지표 (Diversity, Coverage) 측정
+    
+    === 개발팀 구현 참고 ===
+    🏗️ 성능 최적화 포인트:
+    - 결과 캐싱: 동일 쿼리 재사용 (TTL: 30분)
+    - 배치 처리: 다중 추천 요청 동시 처리
+    - 비동기 LLM 호출: 작업상세 생성 병렬화
+    
+    📊 모니터링 지표:
+    - 추천 정확도: 사용자 선택률 (목표: >70%)
+    - 응답 시간: 평균 처리 시간 (목표: <500ms)
+    - 시스템 안정성: 에러율 (목표: <1%)
+    
+    🎯 확장성 고려사항:
+    - 추천 모델 A/B 테스트 프레임워크
+    - 실시간 사용자 피드백 수집
+    - 추천 이유 설명 기능 (Explainable AI)
     """
     
     def __init__(self):
