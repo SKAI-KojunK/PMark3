@@ -1,14 +1,14 @@
-# PMark2.5 - AI-powered Work Request Assistant
+# PMark3 - AI-powered Work Request Assistant
 
 설비관리 시스템을 위한 **멀티턴 대화형** AI 작업요청 생성 어시스턴트
 
 ## 📋 프로젝트 개요
 
-PMark2.5는 사용자의 자연어 입력을 분석하여 설비관리 시스템의 작업요청을 자동으로 생성하는 AI 어시스턴트입니다. OpenAI GPT-4o를 활용하여 **멀티턴 대화**를 통해 단계별로 정보를 수집하고, 한국어-영어 혼용 표현, 오타, 띄어쓰기 오류 등도 정확하게 이해하여 표준화된 작업요청을 생성합니다.
+PMark3는 사용자의 자연어 입력을 분석하여 설비관리 시스템의 작업요청을 자동으로 생성하는 AI 어시스턴트입니다. OpenAI GPT-4o를 활용하여 **멀티턴 대화**를 통해 단계별로 정보를 수집하고, 한국어-영어 혼용 표현, 오타, 띄어쓰기 오류 등도 정확하게 이해하여 표준화된 작업요청을 생성합니다.
 
 ## 🎯 주요 기능
 
-### 🔥 **PMark2.5 신규 기능**
+### 🔥 **PMark3 신규 기능**
 - **멀티턴 대화 시스템**: 단계별 정보 수집 및 누적 단서 관리
 - **세션 기반 상태 관리**: 대화 컨텍스트 유지 및 턴별 추적
 - **설비유형 D컬럼 정확 매핑**: 설비유형 자료_20250522.xlsx 두 번째 시트 D컬럼 참조
@@ -23,7 +23,7 @@ PMark2.5는 사용자의 자연어 입력을 분석하여 설비관리 시스템
 - **실시간 유사도 표시**: 추천 결과의 유사도를 퍼센트와 색상으로 표시
 - **편집 가능한 ITEMNO**: 사용자가 추천 결과의 ITEMNO를 직접 수정 가능
 
-## 🚀 PMark2.5 개선사항
+## 🚀 PMark3 개선사항
 
 ### 1️⃣ **멀티턴 대화 시스템**
 - **단계별 정보 수집**: 위치 → 설비유형 → 현상코드 순서로 정보 수집
@@ -86,8 +86,8 @@ PMark2.5는 사용자의 자연어 입력을 분석하여 설비관리 시스템
 ### **1. 환경 설정**
 ```bash
 # 프로젝트 클론
-git clone https://github.com/SKAI-KojunK/PMark2.5.git
-cd PMark2.5
+git clone https://github.com/SKAI-KojunK/PMark3.git
+cd PMark3
 
 # 가상환경 생성 및 활성화
 python -m venv venv
@@ -106,7 +106,7 @@ cp env.example .env
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-### **3. PMark2.5 실행 (테스트 환경)**
+### **3. PMark3 실행 (테스트 환경)**
 ```bash
 # 백엔드 실행 (포트 8010)
 python test_env/scripts/start_test_backend.py
@@ -116,19 +116,19 @@ python test_env/scripts/start_test_frontend.py
 ```
 
 ### **4. 접속**
-- **PMark2.5 웹 인터페이스**: http://localhost:3010
+- **PMark3 웹 인터페이스**: http://localhost:3010
 - **API 문서**: http://localhost:8010/docs
 
 ## 📁 프로젝트 구조
 
 ```
-PMark2.5/
-├── backend/                 # PMark1 기본 백엔드
-├── test_env/               # PMark2.5 테스트 환경
+PMark3/
+├── backend/                 # PMark3 기본 백엔드
+├── test_env/               # PMark3 테스트 환경
 │   ├── backend/            # 고급 백엔드 (멀티턴 지원)
 │   ├── frontend/           # 테스트용 프론트엔드
 │   ├── scripts/            # 실행 스크립트
-│   └── test_chatbot.html   # PMark2.5 테스트 페이지
+│   └── test_chatbot.html   # PMark3 테스트 페이지
 ├── docs/                   # 문서
 ├── scripts/                # 유틸리티 스크립트
 ├── notebooks/              # 실험 노트북
@@ -164,7 +164,7 @@ PMark2.5/
 
 ## 🔄 API 엔드포인트
 
-### **PMark2.5 API (v2)**
+### **PMark3 API (v2)**
 - `POST /api/v1/chat/v2` - 멀티턴 대화 채팅
 - `POST /api/v1/autocomplete` - 자동완성 추천
 - `GET /api/v1/work-details/{itemno}` - 작업 상세 정보
@@ -191,4 +191,4 @@ PMark2.5/
 
 ---
 
-**PMark2.5** - 설비관리의 미래를 여는 AI 어시스턴트 🚀
+**PMark3** - 설비관리의 미래를 여는 AI 어시스턴트 🚀
