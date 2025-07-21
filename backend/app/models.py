@@ -45,173 +45,6 @@ class ChatRequest(BaseModel):
     """
     message: str = Field(..., description="사용자 입력 메시지")
     conversation_history: List[ChatMessage] = Field(default=[], description="대화 히스토리")
-    session_id: Optional[str] = Field(None, description="세션 ID (누적 정보 관리용)")
-
-class AccumulatedClues(BaseModel):
-    """
-    누적된 단서 항목들 모델
-    
-    사용처:
-    - SessionState 내부에서 단서 항목 관리
-    - parser.py에서 이전 컨텍스트와 병합
-    
-    담당자 수정 가이드:
-    - 각 필드는 Optional이며 점진적으로 채워짐
-    - confidence는 각 항목의 신뢰도 추적
-    - merge_with() 메서드로 새 정보와 병합
-    """
-    location: Optional[str] = Field(None, description="누적된 위치/공정")
-    equipment_type: Optional[str] = Field(None, description="누적된 설비유형")
-    status_code: Optional[str] = Field(None, description="누적된 현상코드")
-    priority: Optional[str] = Field(None, description="누적된 우선순위")
-    itemno: Optional[str] = Field(None, description="누적된 ITEMNO")
-    
-    # 각 항목별 신뢰도 추적
-    location_confidence: float = Field(default=0.0, description="위치 신뢰도")
-    equipment_type_confidence: float = Field(default=0.0, description="설비유형 신뢰도")
-    status_code_confidence: float = Field(default=0.0, description="현상코드 신뢰도")
-    priority_confidence: float = Field(default=0.0, description="우선순위 신뢰도")
-    
-    def merge_with(self, parsed_input: "ParsedInput") -> "AccumulatedClues":
-        """
-        새로운 ParsedInput과 기존 누적 정보를 병합
-        
-        Args:
-            parsed_input: 새로 파싱된 입력 정보
-            
-        Returns:
-            병합된 AccumulatedClues 객체
-            
-        병합 규칙:
-        1. 새 정보가 있고 신뢰도가 높으면 업데이트
-        2. 기존 정보가 없으면 새 정보로 설정
-        3. 신뢰도가 비슷하면 기존 정보 유지 (사용자 의도 존중)
-        """
-        merged = AccumulatedClues(
-            location=self.location,
-            equipment_type=self.equipment_type,
-            status_code=self.status_code,
-            priority=self.priority,
-            itemno=self.itemno,
-            location_confidence=self.location_confidence,
-            equipment_type_confidence=self.equipment_type_confidence,
-            status_code_confidence=self.status_code_confidence,
-            priority_confidence=self.priority_confidence
-        )
-        
-        # 위치 정보 병합
-        if parsed_input.location and (
-            not merged.location or 
-            parsed_input.confidence > merged.location_confidence + 0.1
-        ):
-            merged.location = parsed_input.location
-            merged.location_confidence = parsed_input.confidence
-            
-        # 설비유형 병합
-        if parsed_input.equipment_type and (
-            not merged.equipment_type or 
-            parsed_input.confidence > merged.equipment_type_confidence + 0.1
-        ):
-            merged.equipment_type = parsed_input.equipment_type
-            merged.equipment_type_confidence = parsed_input.confidence
-            
-        # 현상코드 병합
-        if parsed_input.status_code and (
-            not merged.status_code or 
-            parsed_input.confidence > merged.status_code_confidence + 0.1
-        ):
-            merged.status_code = parsed_input.status_code
-            merged.status_code_confidence = parsed_input.confidence
-            
-        # 우선순위 병합 (기본값이 아닌 경우만)
-        if parsed_input.priority and parsed_input.priority != "일반작업" and (
-            not merged.priority or 
-            parsed_input.confidence > merged.priority_confidence + 0.1
-        ):
-            merged.priority = parsed_input.priority
-            merged.priority_confidence = parsed_input.confidence
-            
-        # ITEMNO 병합 (시나리오 2용)
-        if parsed_input.itemno:
-            merged.itemno = parsed_input.itemno
-            
-        return merged
-    
-    def to_parsed_input(self, scenario: str = "S1") -> "ParsedInput":
-        """
-        누적된 단서를 ParsedInput 형태로 변환
-        
-        Args:
-            scenario: 시나리오 타입
-            
-        Returns:
-            누적된 정보가 포함된 ParsedInput 객체
-        """
-        # 전체 신뢰도 계산 (각 항목 신뢰도의 평균)
-        confidences = [
-            self.location_confidence if self.location else 0.0,
-            self.equipment_type_confidence if self.equipment_type else 0.0,
-            self.status_code_confidence if self.status_code else 0.0,
-            self.priority_confidence if self.priority else 0.0
-        ]
-        
-        valid_confidences = [c for c in confidences if c > 0.0]
-        avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0.0
-        
-        return ParsedInput(
-            scenario=scenario,
-            location=self.location,
-            equipment_type=self.equipment_type,
-            status_code=self.status_code,
-            priority=self.priority or "일반작업",
-            itemno=self.itemno,
-            confidence=avg_confidence
-        )
-    
-    def get_missing_fields(self) -> List[str]:
-        """
-        누락된 주요 필드들 반환
-        
-        Returns:
-            누락된 필드명 리스트
-        """
-        missing = []
-        if not self.location:
-            missing.append("location")
-        if not self.equipment_type:
-            missing.append("equipment_type")
-        if not self.status_code:
-            missing.append("status_code")
-        return missing
-    
-    def has_sufficient_info(self) -> bool:
-        """
-        충분한 정보가 있는지 확인 (3개 필수 단서 모두 존재)
-        
-        Returns:
-            충분한 정보 존재 여부
-        """
-        return bool(self.location and self.equipment_type and self.status_code)
-
-class SessionState(BaseModel):
-    """
-    멀티턴 대화 세션 상태 모델
-    
-    사용처:
-    - chat.py: 세션별 컨텍스트 유지
-    - parser.py: 누적된 단서 항목 참조
-    
-    담당자 수정 가이드:
-    - accumulated_clues는 대화 중 누적된 단서 항목들
-    - session_status는 세션 진행 상태 추적
-    - 새 세션 시작 시 모든 필드 초기화
-    """
-    session_id: str = Field(..., description="세션 고유 ID")
-    accumulated_clues: AccumulatedClues = Field(default_factory=AccumulatedClues, description="누적된 단서 항목들")
-    session_status: str = Field(default="collecting_info", description="세션 상태 (collecting_info/recommending/finalizing)")
-    created_at: datetime = Field(default_factory=datetime.now, description="세션 생성일시")
-    last_updated: datetime = Field(default_factory=datetime.now, description="마지막 업데이트 시간")
-    turn_count: int = Field(default=0, description="대화 턴 수")
 
 class ParsedInput(BaseModel):
     """
@@ -230,18 +63,57 @@ class ParsedInput(BaseModel):
     담당자 수정 가이드:
     - 새로운 필드 추가 시 parser.py의 _create_scenario_1_prompt()도 수정 필요
     - confidence 필드는 LLM 응답의 신뢰도를 나타냄 (0.0~1.0)
-    - missing_items는 시나리오 1에서 누락된 주요 3개 단서 항목 목록
-    - needs_additional_input은 추가 입력이 필요한지 여부
     """
     scenario: str = Field(..., description="시나리오 (S1/S2)")
     location: Optional[str] = Field(None, description="위치/공정")
     equipment_type: Optional[str] = Field(None, description="설비유형")
     status_code: Optional[str] = Field(None, description="현상코드")
-    priority: str = Field(default="일반작업", description="우선순위")
+    priority: Optional[str] = Field(None, description="우선순위")
     itemno: Optional[str] = Field(None, description="ITEMNO (시나리오 2용)")
     confidence: float = Field(..., description="분석 신뢰도")
-    missing_items: List[str] = Field(default=[], description="누락된 주요 단서 항목들 (location, equipment_type, status_code)")
-    needs_additional_input: bool = Field(default=False, description="추가 입력 필요 여부")
+
+    def merge_with_accumulated_clues(self, accumulated_clues: "AccumulatedClues") -> "ParsedInput":
+        """
+        누적된 단서들과 현재 파싱 결과를 병합
+        
+        Args:
+            accumulated_clues: 누적된 단서 항목들
+            
+        Returns:
+            병합된 ParsedInput 객체
+            
+        병합 규칙:
+        1. 현재 파싱에 정보가 있으면 우선 사용
+        2. 현재 파싱에 없으면 누적된 정보 사용
+        3. 신뢰도는 현재 파싱 결과 기준
+        """
+        return ParsedInput(
+            scenario=self.scenario,
+            location=self.location or accumulated_clues.location,
+            equipment_type=self.equipment_type or accumulated_clues.equipment_type,
+            status_code=self.status_code or accumulated_clues.status_code,
+            priority=self.priority if self.priority != "일반작업" else (accumulated_clues.priority or "일반작업"),
+            itemno=self.itemno or accumulated_clues.itemno,
+            confidence=self.confidence
+        )
+    
+    def has_new_information(self, accumulated_clues: "AccumulatedClues") -> bool:
+        """
+        누적된 단서 대비 새로운 정보가 있는지 확인
+        
+        Args:
+            accumulated_clues: 누적된 단서 항목들
+            
+        Returns:
+            새로운 정보 존재 여부
+        """
+        return (
+            (self.location and self.location != accumulated_clues.location) or
+            (self.equipment_type and self.equipment_type != accumulated_clues.equipment_type) or
+            (self.status_code and self.status_code != accumulated_clues.status_code) or
+            (self.priority != "일반작업" and self.priority != accumulated_clues.priority) or
+            (self.itemno and self.itemno != accumulated_clues.itemno)
+        )
 
 class Recommendation(BaseModel):
     """
@@ -267,7 +139,6 @@ class Recommendation(BaseModel):
     itemno: str = Field(..., description="ITEMNO")
     process: str = Field(..., description="공정명")
     location: str = Field(..., description="위치")
-    cost_center: Optional[str] = Field(None, description="Cost Center (공정명 표시용)")
     equipType: str = Field(..., description="설비유형")
     statusCode: str = Field(..., description="현상코드")
     priority: str = Field(default="일반작업", description="우선순위")
@@ -400,3 +271,224 @@ class FinalizeResponse(BaseModel):
     """
     message: str = Field(..., description="완성 메시지")
     work_order: WorkOrder = Field(..., description="완성된 작업요청") 
+
+# 세션 상태 관리를 위한 새로운 모델들 (v2.5 신기능)
+class SessionState(BaseModel):
+    """
+    멀티턴 대화 세션 상태 모델
+    
+    사용처:
+    - chat.py: 세션별 컨텍스트 유지
+    - parser.py: 누적된 단서 항목 참조
+    
+    담당자 수정 가이드:
+    - accumulated_clues는 대화 중 누적된 단서 항목들
+    - session_status는 세션 진행 상태 추적
+    - 새 세션 시작 시 모든 필드 초기화
+    """
+    session_id: str = Field(..., description="세션 고유 ID")
+    accumulated_clues: "AccumulatedClues" = Field(default_factory=lambda: AccumulatedClues(), description="누적된 단서 항목들")
+    session_status: str = Field(default="collecting_info", description="세션 상태 (collecting_info/recommending/finalizing)")
+    created_at: datetime = Field(default_factory=datetime.now, description="세션 생성일시")
+    last_updated: datetime = Field(default_factory=datetime.now, description="마지막 업데이트 시간")
+    turn_count: int = Field(default=0, description="대화 턴 수")
+
+class AccumulatedClues(BaseModel):
+    """
+    누적된 단서 항목들 모델
+    
+    사용처:
+    - SessionState 내부에서 단서 항목 관리
+    - parser.py에서 이전 컨텍스트와 병합
+    
+    담당자 수정 가이드:
+    - 각 필드는 Optional이며 점진적으로 채워짐
+    - confidence는 각 항목의 신뢰도 추적
+    - merge_with() 메서드로 새 정보와 병합
+    """
+    location: Optional[str] = Field(None, description="누적된 위치/공정")
+    equipment_type: Optional[str] = Field(None, description="누적된 설비유형")
+    status_code: Optional[str] = Field(None, description="누적된 현상코드")
+    priority: Optional[str] = Field(None, description="누적된 우선순위")
+    itemno: Optional[str] = Field(None, description="누적된 ITEMNO")
+    
+    # 각 항목별 신뢰도 추적
+    location_confidence: float = Field(default=0.0, description="위치 신뢰도")
+    equipment_type_confidence: float = Field(default=0.0, description="설비유형 신뢰도")
+    status_code_confidence: float = Field(default=0.0, description="현상코드 신뢰도")
+    priority_confidence: float = Field(default=0.0, description="우선순위 신뢰도")
+    
+    def merge_with(self, parsed_input: ParsedInput) -> "AccumulatedClues":
+        """
+        새로운 ParsedInput과 기존 누적 정보를 병합
+        
+        Args:
+            parsed_input: 새로 파싱된 입력 정보
+            
+        Returns:
+            병합된 AccumulatedClues 객체
+            
+        병합 규칙:
+        1. 새 정보가 있고 신뢰도가 높으면 업데이트
+        2. 기존 정보가 없으면 새 정보로 설정
+        3. 신뢰도가 비슷하면 기존 정보 유지 (사용자 의도 존중)
+        """
+        merged = AccumulatedClues(
+            location=self.location,
+            equipment_type=self.equipment_type,
+            status_code=self.status_code,
+            priority=self.priority,
+            itemno=self.itemno,
+            location_confidence=self.location_confidence,
+            equipment_type_confidence=self.equipment_type_confidence,
+            status_code_confidence=self.status_code_confidence,
+            priority_confidence=self.priority_confidence
+        )
+        
+        # 위치 정보 병합
+        if parsed_input.location and (
+            not merged.location or 
+            parsed_input.confidence > merged.location_confidence + 0.1
+        ):
+            merged.location = parsed_input.location
+            merged.location_confidence = parsed_input.confidence
+            
+        # 설비유형 병합
+        if parsed_input.equipment_type and (
+            not merged.equipment_type or 
+            parsed_input.confidence > merged.equipment_type_confidence + 0.1
+        ):
+            merged.equipment_type = parsed_input.equipment_type
+            merged.equipment_type_confidence = parsed_input.confidence
+            
+        # 현상코드 병합
+        if parsed_input.status_code and (
+            not merged.status_code or 
+            parsed_input.confidence > merged.status_code_confidence + 0.1
+        ):
+            merged.status_code = parsed_input.status_code
+            merged.status_code_confidence = parsed_input.confidence
+            
+        # 우선순위 병합 (기본값이 아닌 경우만)
+        if parsed_input.priority and parsed_input.priority != "일반작업" and (
+            not merged.priority or 
+            parsed_input.confidence > merged.priority_confidence + 0.1
+        ):
+            merged.priority = parsed_input.priority
+            merged.priority_confidence = parsed_input.confidence
+            
+        # ITEMNO 병합 (시나리오 2용)
+        if parsed_input.itemno:
+            merged.itemno = parsed_input.itemno
+            
+        return merged
+    
+    def to_parsed_input(self, scenario: str = "S1") -> ParsedInput:
+        """
+        누적된 단서를 ParsedInput 형태로 변환
+        
+        Args:
+            scenario: 시나리오 타입
+            
+        Returns:
+            누적된 정보가 포함된 ParsedInput 객체
+        """
+        # 전체 신뢰도 계산 (각 항목 신뢰도의 평균)
+        confidences = [
+            self.location_confidence if self.location else 0.0,
+            self.equipment_type_confidence if self.equipment_type else 0.0,
+            self.status_code_confidence if self.status_code else 0.0,
+            self.priority_confidence if self.priority else 0.0
+        ]
+        
+        valid_confidences = [c for c in confidences if c > 0.0]
+        avg_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else 0.0
+        
+        return ParsedInput(
+            scenario=scenario,
+            location=self.location,
+            equipment_type=self.equipment_type,
+            status_code=self.status_code,
+            priority=self.priority or "일반작업",
+            itemno=self.itemno,
+            confidence=avg_confidence
+        )
+    
+    def get_missing_fields(self) -> List[str]:
+        """
+        누락된 주요 필드들 반환
+        
+        Returns:
+            누락된 필드명 리스트
+        """
+        missing = []
+        if not self.location:
+            missing.append("location")
+        if not self.equipment_type:
+            missing.append("equipment_type")
+        if not self.status_code:
+            missing.append("status_code")
+        return missing
+    
+    def has_sufficient_info(self) -> bool:
+        """
+        추천을 위한 충분한 정보가 있는지 확인
+        
+        Returns:
+            충분한 정보 보유 여부
+        """
+        # 위치는 가장 중요하므로 필수
+        # 설비유형이나 현상코드 중 하나는 있어야 함
+        return (
+            self.location is not None and 
+            (self.equipment_type is not None or self.status_code is not None)
+        )
+    
+    def has_any_clue(self) -> bool:
+        """
+        누적된 단서가 하나라도 있는지 확인
+        
+        Returns:
+            누적된 단서 존재 여부
+        """
+        return (
+            self.location is not None or
+            self.equipment_type is not None or
+            self.status_code is not None or
+            self.priority is not None or
+            self.itemno is not None
+        )
+
+class EnhancedChatRequest(BaseModel):
+    """
+    세션 상태를 포함한 확장된 채팅 요청 모델
+    
+    사용처:
+    - chat.py: 세션 상태 기반 대화 처리 (향후 적용)
+    
+    담당자 수정 가이드:
+    - session_id가 없으면 새 세션 시작
+    - 기존 ChatRequest와 호환성 유지
+    """
+    message: str = Field(..., description="사용자 입력 메시지")
+    conversation_history: List[ChatMessage] = Field(default=[], description="대화 히스토리")
+    session_id: Optional[str] = Field(None, description="세션 ID (선택사항)")
+
+class EnhancedChatResponse(BaseModel):
+    """
+    세션 상태를 포함한 확장된 채팅 응답 모델
+    
+    사용처:
+    - chat.py: 세션 상태 정보 포함 응답 (향후 적용)
+    
+    담당자 수정 가이드:
+    - session_state는 프론트엔드에서 세션 UI 표시용
+    - 기존 ChatResponse와 호환성 유지
+    """
+    message: str = Field(..., description="봇 응답 메시지")
+    recommendations: List[Recommendation] = Field(default=[], description="추천 항목들")
+    parsed_input: Optional[ParsedInput] = Field(None, description="구문분석 결과")
+    needs_additional_input: bool = Field(default=False, description="추가 입력 필요 여부")
+    missing_fields: List[str] = Field(default=[], description="누락된 필드들")
+    session_state: Optional[SessionState] = Field(None, description="현재 세션 상태")
+    accumulated_clues: Optional[AccumulatedClues] = Field(None, description="누적된 단서 항목들") 

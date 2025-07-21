@@ -76,16 +76,15 @@ class LLMNormalizer:
         conn = sqlite3.connect(db_path)
         terms = []
         if category == "equipment":
-            # 설비유형 자료에서 먼저 확인
+            # equipment_types 테이블에서 type_name 컬럼(D컬럼 전체 값) 추출
             try:
-                cursor = conn.execute("SELECT DISTINCT type_name FROM equipment_types")
+                cursor = conn.execute("SELECT DISTINCT type_name FROM equipment_types WHERE type_name IS NOT NULL")
                 terms = [row[0] for row in cursor.fetchall() if row[0]]
             except sqlite3.OperationalError:
-                # equipment_types 테이블이 없으면 notification_history에서 추출
+                # equipment_types 테이블이 없는 경우 notification_history 사용
                 cursor = conn.execute("SELECT DISTINCT equipType FROM notification_history")
                 terms = [row[0] for row in cursor.fetchall() if row[0]]
         elif category == "location":
-            # Location 컬럼에서 추출 (Cost Center가 아님)
             cursor = conn.execute("SELECT DISTINCT location FROM notification_history")
             terms = [row[0] for row in cursor.fetchall() if row[0]]
         elif category == "status":
@@ -201,7 +200,7 @@ class LLMNormalizer:
 
 {extra_rule}
 
-**정규화 규칙**:
+정규화 규칙:
 1. 오타, 띄어쓰기 오류, 한영 혼용을 DB에 있는 표준 용어로 변환
 2. 여러 단어로 구성된 표현도 해당하는 표준 용어로 매핑
 3. 유사한 의미나 동의어를 적절한 표준 용어로 변환
@@ -209,20 +208,13 @@ class LLMNormalizer:
 5. 표준 용어 목록에 없는 경우 가장 유사한 용어 선택
 6. 전혀 매칭되지 않는 경우 "UNKNOWN" 반환
 
-**한국어-영어 혼용 인식 규칙**:
-- 한국어와 영어가 혼용된 표현도 정확히 인식 (예: "압력베젤" ↔ "Pressure Vessel")
-- 오타, 띄어쓰기 오류, 특수문자를 무시하고 의미 파악
-- 유사한 의미의 표현들을 동일한 카테고리로 매핑
-- 문맥을 고려하여 가장 적절한 표준 용어로 변환
-- 동일한 개념의 다른 표현들을 하나의 표준 용어로 통합
-
-**매칭 우선순위**:
+매칭 우선순위:
 1. 정확한 일치 (가장 높은 신뢰도)
 2. 부분 일치 또는 유사한 의미 (높은 신뢰도)
 3. 맥락적 유사성 (중간 신뢰도)
 4. 추정 매칭 (낮은 신뢰도)
 
-**응답 형식**:
+응답 형식:
 ```json
 {{
     "normalized_term": "표준용어",

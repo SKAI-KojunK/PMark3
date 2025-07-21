@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..logic.recommender import recommendation_engine
 from ..database import db_manager
+from ..session_manager import session_manager
 from openai import OpenAI
 from ..config import Config
 import logging
@@ -179,6 +180,157 @@ async def finalize_work_order(request: FinalizeRequest):
         logger.error(f"작업요청 완성 오류: {e}")
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
 
+@router.post("/finalize-work-order-v2", response_model=FinalizeResponse)
+async def finalize_work_order_v2(request: FinalizeRequest, session_id: str = None):
+    """
+    세션 기반 작업요청 완성 엔드포인트 (v2.5 신기능)
+    
+    작업 완료 시 자동으로 세션을 종료하여 새로운 작업 세션을 준비합니다.
+    
+    Args:
+        request: FinalizeRequest - 최종 작업명, 상세, 선택된 추천 항목
+        session_id: 현재 작업 세션 ID (선택사항)
+        
+    Returns:
+        FinalizeResponse - 완성된 작업요청 정보
+        
+    사용처:
+    - frontend: 세션 기반 채팅에서 작업 완성
+    - 멀티턴 대화 컨텍스트 관리
+        
+    API 흐름:
+    1. 기본 작업요청 완성 처리
+    2. 세션 종료 및 정리
+    3. 새 세션 준비 안내
+    4. 완성 응답 반환
+    
+    담당자 수정 가이드:
+    - 기존 finalize_work_order와 병행 운영
+    - 세션 정리 로직은 session_manager에서 처리
+    - 외부 시스템 연동 시 트랜잭션 고려
+    """
+    try:
+        logger.info(f"세션 기반 작업요청 완성 요청: {request.work_title} (세션: {session_id})")
+        
+        # 1단계: 기본 작업요청 완성 처리 (기존 로직 재사용)
+        basic_response = await finalize_work_order(request)
+        
+        # 2단계: 세션 종료 처리
+        if session_id:
+            session_state = session_manager.get_session(session_id)
+            if session_state:
+                # 세션 완료 마킹
+                finalize_success = session_manager.finalize_session(session_id)
+                
+                if finalize_success:
+                    logger.info(f"세션 종료 완료: {session_id}")
+                    
+                    # 세션 통계 로깅
+                    session_stats = {
+                        "session_id": session_id,
+                        "turn_count": session_state.turn_count,
+                        "session_duration": str(datetime.now() - session_state.created_at),
+                        "final_clues": {
+                            "location": session_state.accumulated_clues.location,
+                            "equipment_type": session_state.accumulated_clues.equipment_type,
+                            "status_code": session_state.accumulated_clues.status_code,
+                            "priority": session_state.accumulated_clues.priority
+                        }
+                    }
+                    logger.info(f"세션 완료 통계: {session_stats}")
+                else:
+                    logger.warning(f"세션 종료 실패: {session_id}")
+            else:
+                logger.warning(f"세션을 찾을 수 없음: {session_id}")
+        
+        # 3단계: 완성 메시지에 새 세션 안내 추가
+        enhanced_message = basic_response.message + "\n\n"
+        enhanced_message += "🎉 **작업요청이 성공적으로 완성되었습니다!**\n\n"
+        enhanced_message += "새로운 작업이 있으시면 언제든지 말씀해주세요.\n"
+        enhanced_message += "이전 대화 내용은 초기화되며, 새로운 세션으로 시작됩니다."
+        
+        # 4단계: 완성 응답 반환
+        return FinalizeResponse(
+            message=enhanced_message,
+            work_order=basic_response.work_order
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"세션 기반 작업요청 완성 오류: {e}")
+        # 기본 완성 로직으로 fallback
+        try:
+            return await finalize_work_order(request)
+        except:
+            raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
+
+@router.post("/session-reset")
+async def reset_session(session_id: str = None):
+    """
+    세션 수동 리셋 엔드포인트
+    
+    사용자가 명시적으로 새 작업을 시작하고 싶을 때 세션을 리셋합니다.
+    
+    Args:
+        session_id: 리셋할 세션 ID
+        
+    Returns:
+        새로운 세션 정보
+        
+    사용처:
+    - frontend: "새 작업" 버튼 클릭 시
+    - 사용자가 이전 대화 내용을 지우고 싶을 때
+    """
+    try:
+        logger.info(f"세션 수동 리셋 요청: {session_id}")
+        
+        # 기존 세션 종료
+        if session_id:
+            session_manager.end_session(session_id)
+            logger.info(f"기존 세션 종료: {session_id}")
+        
+        # 새 세션 생성
+        new_session_id = session_manager.create_session()
+        logger.info(f"새 세션 생성: {new_session_id}")
+        
+        return {
+            "message": "새로운 작업 세션이 시작되었습니다. 작업요청을 입력해주세요.",
+            "new_session_id": new_session_id,
+            "reset_time": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"세션 리셋 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 리셋에 실패했습니다.")
+
+@router.get("/session-stats")
+async def get_session_stats():
+    """
+    세션 통계 조회 엔드포인트
+    
+    현재 활성 세션들의 통계 정보를 반환합니다.
+    
+    Returns:
+        세션 통계 정보
+        
+    사용처:
+    - 관리자 모니터링
+    - 시스템 성능 분석
+    """
+    try:
+        stats = session_manager.get_session_stats()
+        
+        return {
+            "session_stats": stats,
+            "timestamp": datetime.now().isoformat(),
+            "system_status": "operational"
+        }
+        
+    except Exception as e:
+        logger.error(f"세션 통계 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 통계 조회에 실패했습니다.")
+
 async def _generate_work_details_with_llm(recommendation, user_message: str) -> dict:
     """
     LLM을 사용하여 작업상세 생성
@@ -247,7 +399,7 @@ def _create_work_details_prompt(recommendation, user_message: str) -> str:
 다음 설비관리 작업에 대한 작업명과 상세를 생성해주세요.
 
 **설비 정보**:
-- 공정: {recommendation.cost_center if recommendation.cost_center else recommendation.process}
+- 공정: {recommendation.process}
 - 위치: {recommendation.location}
 - 설비유형: {recommendation.equipType}
 - 현상코드: {recommendation.statusCode}

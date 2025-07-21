@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PMark2.5 테스트 환경 초기 설정 스크립트
+PMark3 개발 환경 초기 설정 스크립트
 필요한 디렉토리와 파일을 생성하고 환경을 준비합니다.
 """
 
@@ -9,7 +9,7 @@ import shutil
 import sys
 
 def create_directory_structure():
-    """테스트 환경 디렉토리 구조를 생성합니다."""
+    """개발 환경 디렉토리 구조를 생성합니다."""
     directories = [
         "backend/app",
         "backend/app/api",
@@ -25,7 +25,7 @@ def create_directory_structure():
         print(f"📁 디렉토리 생성: {directory}")
 
 def copy_backend_files():
-    """기존 백엔드 파일들을 테스트 환경으로 복사합니다."""
+    """기존 백엔드 파일들을 개발 환경으로 복사합니다."""
     source_dir = "../backend"
     target_dir = "backend"
     
@@ -68,7 +68,7 @@ def copy_backend_files():
     return True
 
 def create_test_chatbot_html():
-    """테스트용 챗봇 HTML 파일을 생성합니다."""
+    """개발용 챗봇 HTML 파일을 생성합니다."""
     source_file = "../chatbot.html"
     target_file = "test_chatbot.html"
     
@@ -80,22 +80,22 @@ def create_test_chatbot_html():
         content = content.replace('http://localhost:8001', 'http://localhost:8002')
         content = content.replace('http://127.0.0.1:8001', 'http://127.0.0.1:8002')
         
-        # 테스트 환경 표시 추가
+        # 개발 환경 표시 추가
         content = content.replace('<title>PMark2 AI Assistant</title>', 
-                                '<title>PMark2.5 AI Assistant (TEST)</title>')
+                                '<title>PMark3 AI Assistant</title>')
         
         with open(target_file, 'w', encoding='utf-8') as f:
             f.write(content)
         
-        print(f"📄 테스트용 챗봇 HTML 생성: {target_file}")
+        print(f"📄 개발용 챗봇 HTML 생성: {target_file}")
         return True
     else:
         print(f"⚠️ 원본 챗봇 HTML을 찾을 수 없습니다: {source_file}")
         return False
 
 def create_env_file():
-    """테스트 환경용 .env 파일을 생성합니다."""
-    env_content = """# PMark2.5 테스트 환경 설정
+    """개발 환경용 .env 파일을 생성합니다."""
+    env_content = """# PMark3 개발 환경 설정
 
 # 포트 설정 (기존과 충돌 방지)
 TEST_BACKEND_PORT=8010
@@ -127,7 +127,7 @@ EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     with open(".env", 'w', encoding='utf-8') as f:
         f.write(env_content)
     
-    print("📄 테스트 환경 .env 파일 생성")
+    print("📄 개발 환경 .env 파일 생성")
 
 def create_init_files():
     """__init__.py 파일들을 생성합니다."""
@@ -146,7 +146,7 @@ def create_init_files():
             print(f"📄 __init__.py 생성: {init_file}")
 
 def main():
-    print("🚀 PMark2.5 테스트 환경 초기 설정 시작...")
+    print("🚀 PMark3 개발 환경 초기 설정 시작...")
     
     # 현재 디렉토리를 test_env로 변경
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -177,7 +177,7 @@ def main():
     print("\n5️⃣ __init__.py 파일 생성 중...")
     create_init_files()
     
-    print("\n✅ 테스트 환경 초기 설정 완료!")
+    print("\n✅ 개발 환경 초기 설정 완료!")
     print("\n📋 다음 단계:")
     print("1. cd test_env")
     print("2. python scripts/start_test_backend.py")

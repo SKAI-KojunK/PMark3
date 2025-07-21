@@ -1,118 +1,106 @@
 #!/usr/bin/env python3
 """
-PMark1 Backend Server Starter
-포트 충돌 방지 및 여러 사용자 접속 지원
+PMark3 백엔드 시작 스크립트
+포트 8010을 사용합니다.
 """
 
 import os
 import sys
 import subprocess
-import signal
-import time
 import socket
-from pathlib import Path
+import time
 
-def find_free_port(start_port=8001, max_attempts=10):
-    """사용 가능한 포트를 찾는 함수"""
+def check_port_available(port):
+    """포트가 사용 가능한지 확인"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('0.0.0.0', port))
+            return True
+    except OSError:
+        return False
+
+def find_free_port(start_port=8002, max_attempts=10):
+    """사용 가능한 포트를 찾습니다."""
     for port in range(start_port, start_port + max_attempts):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(('0.0.0.0', port))
-                return port
-        except OSError:
-            continue
+        if check_port_available(port):
+            return port
     return None
 
-def kill_existing_processes():
-    """기존 PMark1 백엔드 프로세스 종료"""
-    try:
-        # macOS/Linux에서 PMark1 관련 프로세스 찾기 및 종료
-        result = subprocess.run(['pkill', '-f', 'python.*run.py'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            print("✅ 기존 백엔드 프로세스 종료됨")
-        time.sleep(2)  # 프로세스 종료 대기
-    except Exception as e:
-        print(f"⚠️  프로세스 종료 중 오류: {e}")
-
-def get_local_ip():
-    """로컬 IP 주소를 가져오는 함수"""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
-    except:
-        return "localhost"
-
 def main():
-    # 프로젝트 루트 디렉토리로 이동
-    project_root = Path(__file__).parent.parent
-    backend_dir = project_root / "backend"
+    print("🚀 PMark3 백엔드 시작 중...")
     
-    if not backend_dir.exists():
-        print("❌ Backend 디렉토리를 찾을 수 없습니다.")
-        sys.exit(1)
+    # 현재 디렉토리를 프로젝트 루트로 변경
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    os.chdir(project_root)
     
-    os.chdir(backend_dir)
+    print(f"📁 작업 디렉토리: {os.getcwd()}")
     
-    # 기존 프로세스 종료
-    kill_existing_processes()
+    # 포트 확인 - 8010부터 순차적으로 확인
+    target_port = None
+    for port in range(8010, 8031):  # 8010~8030 범위에서 검색
+        if check_port_available(port):
+            target_port = port
+            print(f"✅ 포트 {target_port}를 사용합니다.")
+            break
+        else:
+            print(f"⚠️ 포트 {port}가 이미 사용 중입니다.")
     
-    # 가상환경 활성화 확인
-    venv_path = backend_dir / "venv"
-    if not venv_path.exists():
-        print("❌ 가상환경을 찾을 수 없습니다. 먼저 setup_dev.sh를 실행하세요.")
-        sys.exit(1)
+    if target_port is None:
+        print("❌ 사용 가능한 포트를 찾을 수 없습니다.")
+        return
     
     # 환경 변수 설정
     env = os.environ.copy()
-    env['BACKEND_PORT'] = '8001'
-    env['FRONTEND_PORT'] = '3001'
+    env["BACKEND_PORT"] = str(target_port)
+    env["FRONTEND_PORT"] = "3010"
+    env["DATABASE_URL"] = f"sqlite:///./data/notifications.db"
+    env["SQLITE_DB_PATH"] = "./data/notifications.db"
+    env["VECTOR_DB_PATH"] = "./data/vector_db"
     
-    # 포트 확인
-    port = find_free_port(8001)
-    if not port:
-        print("❌ 사용 가능한 포트를 찾을 수 없습니다.")
-        sys.exit(1)
+    # 엑셀 파일 경로 설정 (프로젝트 루트 기준)
+    env["NOTIFICATION_HISTORY_FILE"] = os.path.join(project_root, "[Noti이력].xlsx")
+    env["STATUS_CODE_FILE"] = os.path.join(project_root, "[현상코드].xlsx")
+    env["EQUIPMENT_TYPE_FILE"] = os.path.join(project_root, "설비유형 자료_20250522.xlsx")
     
-    local_ip = get_local_ip()
+    print(f"🔧 포트: {target_port}")
+    print(f"🗄️ 데이터베이스: {env['SQLITE_DB_PATH']}")
+    print(f"🔍 벡터 DB: {env['VECTOR_DB_PATH']}")
     
-    print(f"🚀 PMark1 Backend Server Starting...")
-    print(f"📁 Working Directory: {backend_dir}")
-    print(f"🌐 Server running on:")
-    print(f"   • Local:    http://localhost:{port}")
-    print(f"   • Network:  http://{local_ip}:{port}")
-    print(f"📡 Other computers can access: http://{local_ip}:{port}")
-    print(f"🛑 Press Ctrl+C to stop the server")
+    # 백엔드 디렉토리로 이동
+    backend_dir = os.path.join(project_root, "backend")
+    if not os.path.exists(backend_dir):
+        print(f"❌ 백엔드 디렉토리를 찾을 수 없습니다: {backend_dir}")
+        return
+    
+    os.chdir(backend_dir)
+    print(f"📁 백엔드 디렉토리: {os.getcwd()}")
+    
+    # 데이터 디렉토리 생성
+    data_dir = os.path.join(project_root, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    print(f"📁 데이터 디렉토리 생성: {data_dir}")
     
     try:
-        # 가상환경 활성화 후 서버 시작
-        if os.name == 'nt':  # Windows
-            activate_script = venv_path / "Scripts" / "activate.bat"
-            cmd = f'"{activate_script}" && python run.py'
-        else:  # macOS/Linux
-            activate_script = venv_path / "bin" / "activate"
-            cmd = f'source "{activate_script}" && python run.py'
+        print("🔥 백엔드 서버 시작...")
+        print(f"🌐 접속 주소: http://localhost:{target_port}")
+        print(f"📊 API 문서: http://localhost:{target_port}/docs")
+        print("🛑 종료하려면 Ctrl+C를 누르세요")
         
-        # 서버 프로세스 시작
-        process = subprocess.Popen(
-            cmd,
-            shell=True,
-            env=env,
-            cwd=backend_dir
-        )
-        
-        # 프로세스 종료 대기
-        process.wait()
+        # uvicorn으로 서버 시작
+        subprocess.run([
+            sys.executable, "-m", "uvicorn", 
+            "main:app", 
+            "--host", "0.0.0.0", 
+            "--port", str(target_port),
+            "--reload"
+        ], env=env)
         
     except KeyboardInterrupt:
-        print("\n🛑 Backend server stopped by user.")
-        if process:
-            process.terminate()
+        print("\n✨ 테스트 백엔드 서버가 종료되었습니다.")
     except Exception as e:
-        print(f"❌ Error starting backend server: {e}")
-        sys.exit(1)
+        print(f"❌ 서버 시작 중 오류 발생: {e}")
 
 if __name__ == "__main__":
     main() 

@@ -12,6 +12,8 @@ PMark1 AI Assistant - 추천 엔진
 """
 
 from openai import OpenAI
+import pandas as pd
+import os
 from typing import List, Dict, Optional
 from ..models import ParsedInput, Recommendation
 from ..database import db_manager
@@ -48,7 +50,50 @@ class RecommendationEngine:
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.model = Config.OPENAI_MODEL
         self.logger = logging.getLogger(__name__)
-    
+        self.noti_history_df = None
+        self.itemno_col = None # '작업대상' 컬럼을 저장할 변수
+        self.cost_center_col = None
+        self._load_noti_history()
+
+    def _find_column(self, df_columns, keywords):
+        """데이터프레임 컬럼 목록에서 키워드와 일치하는 컬럼명을 찾습니다."""
+        for col in df_columns:
+            # 컬럼명을 소문자로 만들고 공백, '.'을 제거하여 비교합니다.
+            normalized_col = col.lower().replace(" ", "").replace(".", "")
+            if all(keyword.lower() in normalized_col for keyword in keywords):
+                return col
+        return None
+
+    def _load_noti_history(self):
+        """[Noti이력].xlsx 파일을 로드하여 Cost Center 조회를 준비합니다."""
+        try:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), *(['..'] * 4)))
+            file_path = os.path.join(project_root, '[Noti이력].xlsx')
+            
+            if not os.path.exists(file_path):
+                self.logger.warning(f"Notification history file not found at '{file_path}'. Cost center lookup will be disabled.")
+                return
+
+            self.noti_history_df = pd.read_excel(file_path, engine='openpyxl')
+            
+            # 컬럼명을 유연하게 찾습니다.
+            self.itemno_col = self._find_column(self.noti_history_df.columns, ['작업대상'])
+            self.cost_center_col = self._find_column(self.noti_history_df.columns, ['cost', 'center'])
+
+            if not self.itemno_col or not self.cost_center_col:
+                self.logger.warning(f"Required columns not found in Excel. Itemno Col ('작업대상'): '{self.itemno_col}', Cost Center Col: '{self.cost_center_col}'. Cost center lookup will be disabled.")
+                self.noti_history_df = None
+                return
+            
+            self.logger.info(f"Successfully mapped columns -> Itemno: '{self.itemno_col}', Cost Center: '{self.cost_center_col}'")
+            
+            # 찾은 컬럼의 타입을 문자열로 변환하여 조회 시 타입 에러를 방지합니다.
+            self.noti_history_df[self.itemno_col] = self.noti_history_df[self.itemno_col].astype(str)
+
+        except Exception as e:
+            self.logger.error(f"Error loading or processing notification history file: {e}")
+            self.noti_history_df = None
+
     def get_recommendations(self, parsed_input: ParsedInput, limit: int = 5) -> List[Recommendation]:
         """
         파싱된 입력을 기반으로 추천 목록 생성
@@ -79,19 +124,22 @@ class RecommendationEngine:
         - 새로운 추천 기준 추가 가능
         """
         try:
-            # 추천 조건 확인: 위치, 설비유형, 현상코드가 모두 있어야 추천
-            if not all([parsed_input.location, parsed_input.equipment_type, parsed_input.status_code]):
-                self.logger.info("추천 조건 미충족: 위치, 설비유형, 현상코드가 모두 필요합니다.")
-                return []
-            
-            # 데이터베이스에서 유사한 알림 검색
-            similar_notifications = db_manager.search_similar_notifications(
-                equip_type=parsed_input.equipment_type,
-                location=parsed_input.location,
-                status_code=parsed_input.status_code,
-                priority=parsed_input.priority,
-                limit=limit * 2  # 더 많은 결과를 가져와서 필터링
-            )
+            # 시나리오별 검색 로직 분기
+            if parsed_input.scenario == "S2" and parsed_input.itemno:
+                # 시나리오 2: ITEMNO 기반 검색
+                similar_notifications = db_manager.search_by_itemno(
+                    itemno=parsed_input.itemno,
+                    limit=limit * 2
+                )
+            else:
+                # 시나리오 1: 자연어 기반 검색
+                similar_notifications = db_manager.search_similar_notifications(
+                    equip_type=parsed_input.equipment_type,
+                    location=parsed_input.location,
+                    status_code=parsed_input.status_code,
+                    priority=parsed_input.priority,
+                    limit=limit * 2  # 더 많은 결과를 가져와서 필터링
+                )
             
             if not similar_notifications:
                 self.logger.warning("유사한 알림을 찾을 수 없습니다.")
@@ -100,49 +148,46 @@ class RecommendationEngine:
             # 유사도 점수 계산 및 추천 항목 생성 (LLM 호출 최소화)
             recommendations = []
             for notification in similar_notifications:
-                # 간단한 문자열 매칭 기반 유사도 점수 계산 (LLM 호출 없음)
-                score = self._calculate_simple_similarity_score(
-                    parsed_input, notification
-                )
+                # 시나리오별 유사도 점수 계산
+                if parsed_input.scenario == "S2" and parsed_input.itemno:
+                    # 시나리오 2: ITEMNO 기반 유사도 점수 계산
+                    score = self._calculate_itemno_similarity_score(
+                        parsed_input, notification
+                    )
+                else:
+                    # 시나리오 1: 자연어 기반 유사도 점수 계산
+                    score = self._calculate_simple_similarity_score(
+                        parsed_input, notification
+                    )
                 
                 # 유사도 점수가 임계값 이상인 경우만 추천 (임계값을 낮춰서 더 많은 추천 제공)
                 if score > 0.2:  # 0.3에서 0.2로 낮춤
+                    # DB에서 가져온 우선순위 사용, 없으면 기본값 설정
+                    db_priority = notification.get('priority')
+                    final_priority = db_priority if db_priority else '일반작업'
+                    
+                    # Cost Center 조회
+                    cost_center = self._get_cost_center(notification.get('itemno'))
+                    
+                    # None 값들을 기본값으로 처리 (더 안전한 처리)
                     recommendation = Recommendation(
-                        itemno=notification['itemno'],
-                        process=notification['process'],
-                        location=notification['location'],
-                        cost_center=notification.get('cost_center'),
-                        equipType=notification['equipType'],
-                        statusCode=notification['statusCode'],
-                        priority=notification['priority'],
+                        itemno=notification.get('itemno') or '',
+                        process=cost_center or notification.get('process') or '미확인',
+                        location=notification.get('location') or '',
+                        equipType=notification.get('equipType') or '미확인',
+                        statusCode=notification.get('statusCode') or '미확인',
+                        priority=final_priority,
                         score=score,
-                        work_title=notification.get('work_title'),
-                        work_details=notification.get('work_details')
+                        work_title=notification.get('work_title') or '',
+                        work_details=notification.get('work_details') or ''
                     )
                     recommendations.append(recommendation)
             
             # 유사도 점수 순으로 정렬
             recommendations.sort(key=lambda x: x.score, reverse=True)
             
-            # 요구사항에 따른 결과 처리
-            total_count = len(recommendations)
-            self.logger.info(f"총 {total_count}개의 추천 항목 발견")
-            
-            if total_count == 0:
-                return []
-            elif 1 <= total_count <= 5:
-                # 1-5개: 해당 값만 반환
-                top_recommendations = recommendations
-                self.logger.info(f"1-5개 범위: {total_count}개 모두 반환")
-            elif 6 <= total_count <= 15:
-                # 6-15개: 5개씩 묶어서 순차적으로 반환 (첫 번째 배치)
-                top_recommendations = recommendations[:5]
-                self.logger.info(f"6-15개 범위: 첫 번째 배치 5개 반환 (총 {total_count}개 중)")
-            else:
-                # 15개 이상: 아이템 넘버 입력 요청을 위해 특별한 처리
-                # 일단 상위 15개로 제한하되, 추가 정보를 포함
-                top_recommendations = recommendations[:15]
-                self.logger.warning(f"15개 이상 ({total_count}개): 아이템 넘버 입력 요청 필요")
+            # 상위 추천 항목만 반환
+            top_recommendations = recommendations[:limit]
             
             # LLM을 사용하여 작업명과 상세 생성 (없는 경우)
             for rec in top_recommendations:
@@ -158,7 +203,23 @@ class RecommendationEngine:
         except Exception as e:
             self.logger.error(f"추천 생성 오류: {e}")
             return []
-    
+            
+    def _get_cost_center(self, itemno: str) -> Optional[str]:
+        """주어진 itemno에 해당하는 Cost Center를 조회합니다."""
+        if self.noti_history_df is None or not itemno or not self.itemno_col or not self.cost_center_col:
+            return None
+        
+        try:
+            # '작업대상' 컬럼(itemno_col)을 기준으로 조회합니다.
+            match = self.noti_history_df[self.noti_history_df[self.itemno_col] == itemno]
+            if not match.empty:
+                cost_center = match.iloc[0][self.cost_center_col]
+                return str(cost_center) if pd.notna(cost_center) else None
+        except Exception as e:
+            self.logger.error(f"Error during cost center lookup for itemno {itemno}: {e}")
+        
+        return None
+
     def _generate_work_details(self, recommendation: Recommendation, parsed_input: ParsedInput) -> Optional[Dict]:
         """
         LLM을 사용하여 작업명과 상세 생성
@@ -223,7 +284,7 @@ class RecommendationEngine:
 다음 설비관리 작업에 대한 작업명과 상세를 생성해주세요.
 
 **설비 정보**:
-- 공정: {recommendation.cost_center if recommendation.cost_center else recommendation.process}
+- 공정: {recommendation.process}
 - 위치: {recommendation.location}
 - 설비유형: {recommendation.equipType}
 - 현상코드: {recommendation.statusCode}
@@ -315,7 +376,6 @@ class RecommendationEngine:
                     itemno=notification['itemno'],
                     process=notification['process'],
                     location=notification['location'],
-                    cost_center=notification.get('cost_center'),
                     equipType=notification['equipType'],
                     statusCode=notification['statusCode'],
                     priority=notification['priority'],
@@ -348,6 +408,8 @@ class RecommendationEngine:
         - 복합 필터링 조건 추가 가능
         - 정렬 기준 추가 가능
         """
+        if not priority:
+            return recommendations
         return [rec for rec in recommendations if rec.priority == priority]
     
     def _calculate_simple_similarity_score(self, parsed_input: ParsedInput, notification: Dict) -> float:
@@ -397,8 +459,8 @@ class RecommendationEngine:
             score += status_match * 0.2
             total_weight += 0.2
         
-        # 우선순위 매칭 (가중치: 0.1)
-        if parsed_input.priority and notification['priority']:
+        # 우선순위 매칭 (가중치: 0.1) - 선택적 항목
+        if parsed_input.priority and notification.get('priority'):
             priority_match = self._calculate_enhanced_string_similarity(
                 parsed_input.priority.lower(), 
                 notification['priority'].lower()
@@ -409,12 +471,67 @@ class RecommendationEngine:
         # 가중 평균 계산
         final_score = score / total_weight if total_weight > 0 else 0.0
         
-        # 보너스 점수: 모든 필드가 매칭되는 경우
+        # 보너스 점수: 핵심 필드가 매칭되는 경우 (우선순위는 선택사항)
         if (parsed_input.equipment_type and parsed_input.location and 
-            parsed_input.status_code and parsed_input.priority):
+            parsed_input.status_code):
             if (equip_match > 0.8 and location_match > 0.8 and 
-                status_match > 0.8 and priority_match > 0.8):
+                status_match > 0.8):
                 final_score = min(final_score + 0.1, 1.0)  # 최대 0.1점 보너스
+        
+        return final_score
+    
+    def _calculate_itemno_similarity_score(self, parsed_input: ParsedInput, notification: Dict) -> float:
+        """
+        시나리오 2용 ITEMNO 기반 유사도 점수 계산
+        
+        Args:
+            parsed_input: 파싱된 입력 데이터 (itemno 포함)
+            notification: 데이터베이스 알림 데이터
+            
+        Returns:
+            유사도 점수 (0.0 ~ 1.0)
+            
+        담당자 수정 가이드:
+        - ITEMNO 매칭에 높은 가중치 부여
+        - 현상코드와 우선순위는 보조적 매칭 기준
+        """
+        score = 0.0
+        total_weight = 0.0
+        
+        # ITEMNO 매칭 (가중치: 0.7) - 시나리오 2의 핵심
+        if parsed_input.itemno and notification.get('itemno'):
+            itemno_match = self._calculate_enhanced_string_similarity(
+                parsed_input.itemno.lower(), 
+                notification['itemno'].lower()
+            )
+            score += itemno_match * 0.7
+            total_weight += 0.7
+        
+        # 현상코드 매칭 (가중치: 0.2)
+        if parsed_input.status_code and notification.get('statusCode'):
+            status_match = self._calculate_enhanced_string_similarity(
+                parsed_input.status_code.lower(), 
+                notification['statusCode'].lower()
+            )
+            score += status_match * 0.2
+            total_weight += 0.2
+        
+        # 우선순위 매칭 (가중치: 0.1) - 선택적 항목
+        if parsed_input.priority and notification.get('priority'):
+            priority_match = self._calculate_enhanced_string_similarity(
+                parsed_input.priority.lower(), 
+                notification['priority'].lower()
+            )
+            score += priority_match * 0.1
+            total_weight += 0.1
+        
+        # 가중 평균 계산
+        final_score = score / total_weight if total_weight > 0 else 0.0
+        
+        # 보너스 점수: ITEMNO가 정확히 매칭되는 경우
+        if (parsed_input.itemno and notification.get('itemno') and 
+            parsed_input.itemno.lower() == notification['itemno'].lower()):
+            final_score = min(final_score + 0.2, 1.0)  # 최대 0.2점 보너스
         
         return final_score
     

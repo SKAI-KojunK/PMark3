@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PMark2.5 테스트 환경 종료 스크립트
-실행 중인 테스트 환경 프로세스를 안전하게 종료합니다.
+PMark3 개발 환경 종료 스크립트
+실행 중인 개발 환경 프로세스를 안전하게 종료합니다.
 """
 
 import os
@@ -43,9 +43,9 @@ def kill_process(proc):
         print(f"❌ 프로세스 {proc.pid} 종료 중 오류: {e}")
 
 def main():
-    print("🛑 PMark2.5 테스트 환경 종료 중...")
+    print("🛑 PMark3 개발 환경 종료 중...")
     
-    # 테스트 환경 포트들 (기존과 충돌 방지)
+    # 개발 환경 포트들 (기존과 충돌 방지)
     test_ports = [8010, 3010]  # 백엔드, 프론트엔드 (기본값)
     
     # 추가로 8011~8030, 3011~3030 범위의 포트도 확인
@@ -80,7 +80,7 @@ def main():
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     
-    print("✨ 테스트 환경 종료 완료")
+    print("✨ 개발 환경 종료 완료")
     print("💡 모든 프로세스가 종료되었습니다.")
 
 if __name__ == "__main__":

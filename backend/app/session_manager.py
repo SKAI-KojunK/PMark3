@@ -177,6 +177,29 @@ class SessionManager:
         # 기본값: 정보 수집 단계
         return "collecting_info"
     
+    def finalize_session(self, session_id: str) -> bool:
+        """
+        세션 완료 및 종료
+        
+        Args:
+            session_id: 세션 ID
+            
+        Returns:
+            성공 여부
+            
+        사용처:
+        - 작업요청 완료 후
+        - 사용자가 명시적으로 종료 요청 시
+        """
+        if session_id in self._sessions:
+            session = self._sessions[session_id]
+            session.session_status = "completed"
+            session.last_updated = datetime.now()
+            
+            self.logger.info(f"세션 완료: {session_id}")
+            return True
+        return False
+    
     def clear_session(self, session_id: str) -> bool:
         """
         세션 삭제
@@ -255,6 +278,28 @@ class SessionManager:
             stats["avg_turn_count"] = total_turns / len(self._sessions)
         
         return stats
+    
+    def extract_context_from_history(self, conversation_history: List[ChatMessage]) -> AccumulatedClues:
+        """
+        대화 히스토리에서 컨텍스트 추출 (백업 방법)
+        
+        Args:
+            conversation_history: 대화 히스토리
+            
+        Returns:
+            추출된 누적 단서들
+            
+        사용처:
+        - 세션이 없을 때 히스토리에서 컨텍스트 복원
+        - 세션 데이터 손실 시 백업 복구
+        
+        담당자 수정 가이드:
+        - 현재는 기본 구현만 제공
+        - 향후 NLP 기반 컨텍스트 추출 로직 추가 가능
+        """
+        # 현재는 기본 빈 객체 반환
+        # 향후 대화 히스토리 분석을 통한 컨텍스트 추출 로직 구현 예정
+        return AccumulatedClues()
 
 # 전역 세션 매니저 인스턴스
 session_manager = SessionManager() 
