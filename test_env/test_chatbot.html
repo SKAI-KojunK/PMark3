@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PMark2.5 - AI 작업요청 Assistant (고급 기능)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-size: 13px; /* 전체 폰트 크기 축소 */
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 22px; /* 헤더 폰트 크기 축소 */
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 13px; /* 헤더 설명 폰트 크기 축소 */
+            opacity: 0.9;
+        }
+
+        .session-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .session-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .recommendations-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #f8f9fa;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #ffffff;
+        }
+
+        .recommendations-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .recommendations-header {
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .context-panel {
+            background: #e8f5e8;
+            border: 1px solid #c8e6c9;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .context-panel h4 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .context-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .context-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .context-label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .context-value {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+
+        .context-value.missing {
+            color: #f57c00;
+            font-style: italic;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.bot {
+            align-items: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 85%; /* 최대 너비 확장 */
+            padding: 12px 18px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            font-size: 13px; /* 메시지 폰트 크기 축소 */
+            line-height: 1.5; /* 줄 간격 조정 */
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message.bot .message-bubble {
+            background: #f1f3f4;
+            border: 1px solid #e9ecef;
+            color: #333;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .session-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .session-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .session-btn.new-session {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .session-btn.new-session:hover {
+            background: #45a049;
+        }
+
+        .session-btn.clear-context {
+            background: #ff9800;
+            color: white;
+        }
+
+        .session-btn.clear-context:hover {
+            background: #e68900;
+        }
+
+        .recommendation-item {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            font-size: 13px; /* 폰트 크기 축소 */
+        }
+
+        .recommendation-item:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.15);
+        }
+
+        .recommendation-item.selected {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .recommendation-radio {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .recommendation-radio.selected {
+            border-color: #667eea;
+        }
+
+        .recommendation-radio.selected::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+
+        .recommendation-content {
+            margin-right: 40px;
+        }
+
+        .recommendation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .recommendation-itemno {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 15px; /* 폰트 크기 축소 */
+        }
+
+        .recommendation-score {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .recommendation-details {
+            color: #666;
+            font-size: 13px; /* 폰트 크기 축소 */
+            line-height: 1.4;
+        }
+
+        .recommendation-field {
+            margin-bottom: 5px;
+        }
+
+        .recommendation-field strong {
+            color: #333;
+        }
+
+        .input-section {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 18px 25px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 14px; /* 폰트 크기 축소 */
+            outline: none;
+            transition: border-color 0.3s ease;
+            min-height: 55px; /* 높이 축소 */
+            line-height: 1.4;
+            width: 100%; /* 전체 너비 확보 */
+            resize: vertical; /* 세로 리사이즈 가능 */
+            max-height: 120px; /* 최대 높이 제한 */
+        }
+
+        .input-field:focus {
+            border-color: #667eea;
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #666;
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e9ecef;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .examples {
+            margin-bottom: 15px;
+        }
+
+        .examples h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .example-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 20px;
+            padding: 8px 15px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            font-size: 13px; /* 폰트 크기 축소 */
+            transition: all 0.3s ease;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .example-item:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .action-btn.primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            background: #5a6fd8;
+        }
+
+        .action-btn.secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #e9ecef;
+        }
+
+        .action-btn.secondary:hover {
+            background: #e9ecef;
+        }
+
+        .no-recommendations {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+        }
+
+        .no-recommendations i {
+            font-size: 48px;
+            color: #ddd;
+            margin-bottom: 15px;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+
+        .auto-complete-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .auto-complete-toggle input[type="checkbox"] {
+            margin: 0;
+        }
+
+        .auto-complete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            max-height: 300px; /* 180px에서 300px로 증가하여 3줄 이상 표시 */
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .auto-complete-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s ease;
+            font-size: 14px;
+        }
+
+        .auto-complete-item:hover {
+            background: #f8f9fa;
+        }
+
+        .auto-complete-item:focus {
+            background: #e3f2fd;
+            outline: 2px solid #2196f3;
+        }
+
+        .auto-complete-item:last-child {
+            border-bottom: none;
+        }
+
+        .input-wrapper {
+            position: relative;
+            flex: 1;
+            transition: transform 0.3s ease;
+        }
+
+        .input-wrapper.moved-up {
+            transform: translateY(-200px);
+        }
+
+        .recommendations-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .recommendation-field {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 8px;
+        }
+
+        .recommendation-field label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 3px;
+            font-weight: 500;
+        }
+
+        .recommendation-field input {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 13px;
+            background: #f8f9fa;
+            transition: all 0.2s ease;
+        }
+
+        .recommendation-field input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+
+        .recommendation-itemno input {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 14px;
+            border: 1px solid #667eea;
+            background: white;
+        }
+
+        .work-details-section {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .work-details-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .work-field {
+            margin-bottom: 15px;
+        }
+
+        .work-field label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .work-field input,
+        .work-field textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Noto Sans KR', sans-serif;
+            transition: border-color 0.3s ease;
+        }
+
+        .work-field input:focus,
+        .work-field textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .work-field textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .work-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="time-display">
+                <span id="currentTime">--:--:--</span>
+            </div>
+            <h1>PMark2.5 - AI 작업요청 Assistant</h1>
+            <p>세션 관리 및 멀티턴 대화 지원 | 누적 컨텍스트 추적</p>
+            <div class="session-info">
+                <div class="session-status"></div>
+                <span id="sessionStatus">세션 대기 중</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chat-section">
+                <div class="session-controls">
+                    <button class="session-btn new-session" onclick="startNewSession()">🆕 새 세션</button>
+                    <button class="session-btn clear-context" onclick="clearContext()">🧹 컨텍스트 초기화</button>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot">
+                        <div class="message-bubble">
+                            👋 안녕하세요! PMark2.5 AI 작업요청 Assistant입니다.<br><br>
+                            🔥 <strong>새로운 고급 기능:</strong><br>
+                            • 세션 관리: 대화 컨텍스트 유지<br>
+                            • 멀티턴 대화: 단계별 정보 수집<br>
+                            • 누적 추적: 이전 정보 기억<br><br>
+                            📝 <strong>입력 방식:</strong><br>
+                            • <strong>시나리오 1:</strong> 자연어로 작업 요청 (위치, 설비, 현상)<br>
+                            • <strong>시나리오 2:</strong> ITEMNO로 특정 작업 조회<br><br>
+                            설비 관련 작업요청을 자연어로 말씀해주세요!
+                        </div>
+                        <div class="message-time" id="initialTime">--:--:--</div>
+                    </div>
+                </div>
+                <div class="input-section">
+                    <div class="auto-complete-toggle">
+                        <input type="checkbox" id="autoCompleteToggle" checked>
+                        <label for="autoCompleteToggle">자동완성 사용</label>
+                    </div>
+                    <div class="examples">
+                        <h4>💡 예시 문장:</h4>
+                        <div class="example-item" onclick="useExample(this)">No.1 PE의 Pressure Vessel/ Drum에 고장 발생.</div>
+                        <div class="example-item" onclick="useExample(this)">석유제품배합/저장의 Motor Operated Valve, 작동불량. 긴급작업 요망</div>
+                        <div class="example-item" onclick="useExample(this)">합성수지 포장, Miscellaneous Equipment/ Conveyor, 고장</div>
+                        <div class="example-item" onclick="useExample(this)">44043-CA1-6"-P, Leak 볼팅 작업.</div>
+                        <div class="example-item" onclick="useExample(this)">Y-MV1035. 고장</div>
+                    </div>
+                    <div class="input-container">
+                        <div class="input-wrapper">
+                            <input type="text" 
+                                   class="input-field" 
+                                   id="messageInput" 
+                                   placeholder="작업 내용을 입력하세요... (예: No.1 PE의 Pressure Vessel/ Drum에 고장 발생.)"
+                                   onkeypress="handleKeyPress(event)"
+                                   oninput="handleInputChange()"
+                                   autocomplete="off">
+                            <div class="auto-complete-dropdown" id="autoCompleteDropdown"></div>
+                        </div>
+                        <button class="send-btn" id="sendBtn" onclick="sendMessage()">전송</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recommendations-section">
+                <div class="recommendations-header">
+                    <span>📋 추천 작업 목록</span>
+                    <span id="recommendationCount">0건</span>
+                </div>
+                
+                <!-- 누적 컨텍스트 패널 -->
+                <div class="context-panel" id="contextPanel" style="display: none;">
+                    <h4>🧠 누적된 작업 정보</h4>
+                    <div class="context-item">
+                        <span class="context-label">위치:</span>
+                        <span class="context-value" id="contextLocation">미확인</span>
+                    </div>
+                    <div class="context-item">
+                        <span class="context-label">설비유형:</span>
+                        <span class="context-value" id="contextEquipment">미확인</span>
+                    </div>
+                    <div class="context-item">
+                        <span class="context-label">현상코드:</span>
+                        <span class="context-value" id="contextStatus">미확인</span>
+                    </div>
+                    <div class="context-item">
+                        <span class="context-label">우선순위:</span>
+                        <span class="context-value" id="contextPriority">미확인</span>
+                    </div>
+                    <div class="context-item">
+                        <span class="context-label">세션 턴:</span>
+                        <span class="context-value" id="contextTurn">0</span>
+                    </div>
+                </div>
+                
+                <div class="recommendations-area" id="recommendationsArea">
+                    <div class="no-recommendations">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🤖</div>
+                        <p>작업 내용을 입력하시면<br>유사한 작업들을 추천해드립니다.</p>
+                    </div>
+                </div>
+                
+                <div class="action-buttons" id="actionButtons" style="display: none;">
+                    <button class="action-btn secondary" onclick="generateWorkDetails()">📝 작업상세 생성</button>
+                    <button class="action-btn primary" onclick="finalizeWorkOrder()">✅ 작업요청 완성</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let conversationHistory = [];
+        let currentRecommendations = [];
+        let selectedRecommendation = null;
+        let isLoading = false;
+        let currentSessionId = null;
+        let sessionState = null;
+        let accumulatedClues = null;
+
+        // 백엔드 URL 설정 (동적 감지)
+        const getBackendUrl = async () => {
+            try {
+                const response = await fetch('/api/backend-info');
+                const data = await response.json();
+                return `http://localhost:${data.backendPort}/api/v1`;
+            } catch (error) {
+                console.error('백엔드 정보 조회 실패:', error);
+                return 'http://localhost:8013/api/v1'; // 기본값
+            }
+        };
+
+        let backendUrl = null;
+
+        // 초기화
+        document.addEventListener('DOMContentLoaded', async function() {
+            backendUrl = await getBackendUrl();
+            console.log('백엔드 URL:', backendUrl);
+            
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+            
+            // 초기 세션 생성
+            await startNewSession();
+        });
+
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ko-KR');
+            document.getElementById('currentTime').textContent = timeString;
+            
+            // 초기 메시지 시간 설정
+            const initialTime = document.getElementById('initialTime');
+            if (initialTime && initialTime.textContent === '--:--:--') {
+                initialTime.textContent = timeString;
+            }
+        }
+
+        function getCurrentTime() {
+            return new Date().toLocaleTimeString('ko-KR');
+        }
+
+        async function startNewSession() {
+            try {
+                console.log('새 세션 시작...');
+                
+                // 세션 리셋 API 호출
+                const response = await fetch(`${backendUrl}/session-reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentSessionId = data.new_session_id;
+                    
+                    // UI 업데이트
+                    document.getElementById('sessionStatus').textContent = `세션 활성 (${currentSessionId.substring(0, 8)}...)`;
+                    
+                    // 컨텍스트 초기화
+                    updateContextPanel(null);
+                    
+                    // 대화 히스토리 초기화
+                    conversationHistory = [];
+                    
+                    console.log('새 세션 생성됨:', currentSessionId);
+                    
+                    // 환영 메시지 추가
+                    addMessageToChat('bot', '🆕 새로운 세션이 시작되었습니다! 작업 내용을 말씀해주세요.');
+                } else {
+                    console.error('세션 생성 실패');
+                }
+            } catch (error) {
+                console.error('세션 생성 오류:', error);
+            }
+        }
+
+        function clearContext() {
+            // 컨텍스트만 초기화 (세션은 유지)
+            updateContextPanel(null);
+            addMessageToChat('bot', '🧹 컨텍스트가 초기화되었습니다. 새로운 작업 정보를 입력해주세요.');
+        }
+
+        function updateContextPanel(accumulated_clues) {
+            const panel = document.getElementById('contextPanel');
+            
+            if (accumulated_clues) {
+                panel.style.display = 'block';
+                
+                // 각 필드 업데이트
+                updateContextField('contextLocation', accumulated_clues.location);
+                updateContextField('contextEquipment', accumulated_clues.equipment_type);
+                updateContextField('contextStatus', accumulated_clues.status_code);
+                updateContextField('contextPriority', accumulated_clues.priority);
+                
+                // 턴 수 업데이트
+                if (sessionState) {
+                    document.getElementById('contextTurn').textContent = sessionState.turn_count;
+                }
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        function updateContextField(elementId, value) {
+            const element = document.getElementById(elementId);
+            if (value) {
+                element.textContent = value;
+                element.className = 'context-value';
+            } else {
+                element.textContent = '미확인';
+                element.className = 'context-value missing';
+            }
+        }
+
+        function useExample(element) {
+            const text = element.textContent;
+            document.getElementById('messageInput').value = text;
+            document.getElementById('messageInput').focus();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !isLoading) {
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            console.log('sendMessage 시작');
+            
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message || isLoading) {
+                console.log('메시지 없음 또는 로딩 중');
+                return;
+            }
+            
+            console.log('전송할 메시지:', message);
+            
+            // 입력창 초기화
+            messageInput.value = '';
+            
+            // 사용자 메시지 추가
+            addMessageToChat('user', message);
+            
+            // 대화 히스토리에 추가
+            conversationHistory.push({
+                role: 'user',
+                content: message,
+                timestamp: getCurrentTime()
+            });
+
+            // 로딩 상태 시작
+            isLoading = true;
+            document.getElementById('sendBtn').disabled = true;
+            const loadingMessage = addMessageToChat('bot', '', true);
+
+            try {
+                console.log('백엔드 요청 시작:', `${backendUrl}/chat/v2`);
+                console.log('요청 데이터:', {
+                    message: message,
+                    conversation_history: conversationHistory,
+                    session_id: currentSessionId
+                });
+
+                const response = await fetch(`${backendUrl}/chat/v2`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_history: conversationHistory,
+                        session_id: currentSessionId
+                    })
+                });
+
+                console.log('응답 상태:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`서버 응답 오류: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('받은 데이터:', data);
+                
+                // 로딩 메시지 제거
+                loadingMessage.remove();
+                
+                // 세션 상태 업데이트
+                if (data.session_state) {
+                    sessionState = data.session_state;
+                    if (data.session_state.session_id) {
+                        currentSessionId = data.session_state.session_id;
+                    }
+                    
+                    // 세션 상태 UI 업데이트
+                    document.getElementById('sessionStatus').textContent = 
+                        `세션 활성 (턴 ${data.session_state.turn_count}, ${data.session_state.session_status})`;
+                }
+                
+                // 누적 컨텍스트 업데이트
+                if (data.accumulated_clues) {
+                    accumulatedClues = data.accumulated_clues;
+                    updateContextPanel(data.accumulated_clues);
+                }
+                
+                // 봇 응답 추가
+                addBotResponse(data);
+                
+                // 대화 히스토리에 추가
+                conversationHistory.push({
+                    role: 'assistant',
+                    content: data.message,
+                    timestamp: getCurrentTime()
+                });
+                
+                // 추천 목록 표시
+                showRecommendations(data);
+                
+                console.log('메시지 처리 완료');
+                
+            } catch (error) {
+                console.error('메시지 전송 오류:', error);
+                
+                // 로딩 메시지 제거
+                loadingMessage.remove();
+                
+                // 오류 메시지 표시
+                addMessageToChat('bot', '죄송합니다. 서버와의 연결에 문제가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                
+            } finally {
+                // 로딩 상태 종료
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        function addMessageToChat(sender, message, isLoading = false) {
+            console.log('메시지 추가:', sender, message.substring(0, 50));
+            
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            
+            if (isLoading) {
+                bubbleDiv.innerHTML = '<div class="loading"><div class="loading-spinner"></div>답변을 생성하고 있습니다...</div>';
+            } else {
+                bubbleDiv.textContent = message;
+            }
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = getCurrentTime();
+            
+            messageDiv.appendChild(bubbleDiv);
+            messageDiv.appendChild(timeDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // 스크롤을 맨 아래로
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function addBotResponse(data) {
+            console.log('봇 응답 추가:', data.message.substring(0, 50));
+            
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot';
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            
+            // 마크다운 스타일 텍스트 처리
+            let formattedMessage = data.message
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            
+            bubbleDiv.innerHTML = formattedMessage;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = getCurrentTime();
+            
+            messageDiv.appendChild(bubbleDiv);
+            messageDiv.appendChild(timeDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // 스크롤을 맨 아래로
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function showRecommendations(data) {
+            console.log('추천 목록 표시:', data.recommendations?.length || 0);
+            
+            currentRecommendations = data.recommendations || [];
+            const recommendationsArea = document.getElementById('recommendationsArea');
+            const recommendationCount = document.getElementById('recommendationCount');
+            const actionButtons = document.getElementById('actionButtons');
+            
+            // 추천 수 업데이트
+            recommendationCount.textContent = `${currentRecommendations.length}건`;
+            
+            if (currentRecommendations.length === 0) {
+                recommendationsArea.innerHTML = `
+                    <div class="no-recommendations">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🤖</div>
+                        <p>추천할 작업을 찾지 못했습니다.<br>다른 키워드로 다시 시도해주세요.</p>
+                    </div>
+                `;
+                actionButtons.style.display = 'none';
+                return;
+            }
+            
+            // 추천 목록 HTML 생성 (2열 배치)
+            let html = '<div class="recommendations-grid">';
+            currentRecommendations.forEach((rec, index) => {
+                const scoreColor = getScoreColor(rec.score);
+                html += `
+                    <div class="recommendation-item" onclick="selectRecommendation(${index})">
+                        <div class="recommendation-radio" id="radio-${index}"></div>
+                        <div class="recommendation-content">
+                            <div class="recommendation-header">
+                                <div class="recommendation-itemno">
+                                    <input type="text" value="${rec.itemno}" 
+                                           onchange="updateRecommendation(${index}, 'itemno', this.value)" 
+                                           onclick="event.stopPropagation()" 
+                                           placeholder="작업대상 (설비번호)">
+                                </div>
+                                <div class="recommendation-score" style="background: ${scoreColor}">
+                                    ${(rec.score * 100).toFixed(1)}%
+                                </div>
+                            </div>
+                            <div class="recommendation-details">
+                                <div class="recommendation-field">
+                                    <label>공정:</label>
+                                    <input type="text" value="${rec.process}" 
+                                           onchange="updateRecommendation(${index}, 'process', this.value)" 
+                                           onclick="event.stopPropagation()">
+                                </div>
+                                <div class="recommendation-field">
+                                    <label>위치:</label>
+                                    <input type="text" value="${rec.location}" 
+                                           onchange="updateRecommendation(${index}, 'location', this.value)" 
+                                           onclick="event.stopPropagation()">
+                                </div>
+                                <div class="recommendation-field">
+                                    <label>설비유형:</label>
+                                    <input type="text" value="${rec.equipType}" 
+                                           onchange="updateRecommendation(${index}, 'equipType', this.value)" 
+                                           onclick="event.stopPropagation()">
+                                </div>
+                                <div class="recommendation-field">
+                                    <label>현상코드:</label>
+                                    <input type="text" value="${rec.statusCode}" 
+                                           onchange="updateRecommendation(${index}, 'statusCode', this.value)" 
+                                           onclick="event.stopPropagation()">
+                                </div>
+                                <div class="recommendation-field">
+                                    <label>우선순위:</label>
+                                    <input type="text" value="${rec.priority}" 
+                                           onchange="updateRecommendation(${index}, 'priority', this.value)" 
+                                           onclick="event.stopPropagation()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            recommendationsArea.innerHTML = html;
+            actionButtons.style.display = 'flex';
+        }
+
+        function getScoreColor(score) {
+            if (score >= 0.8) return 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)';
+            if (score >= 0.6) return 'linear-gradient(135deg, #FF9800 0%, #F57C00 100%)';
+            return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        }
+
+        function selectRecommendation(index) {
+            console.log('추천 선택:', index);
+            
+            // 이전 선택 해제
+            document.querySelectorAll('.recommendation-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            document.querySelectorAll('.recommendation-radio').forEach(radio => {
+                radio.classList.remove('selected');
+            });
+            
+            // 새 선택 적용
+            const selectedItem = document.querySelectorAll('.recommendation-item')[index];
+            const selectedRadio = document.getElementById(`radio-${index}`);
+            
+            if (selectedItem && selectedRadio) {
+                selectedItem.classList.add('selected');
+                selectedRadio.classList.add('selected');
+                selectedRecommendation = currentRecommendations[index];
+                
+                console.log('선택된 추천:', selectedRecommendation);
+            }
+        }
+
+        function updateRecommendation(index, field, value) {
+            console.log('추천 업데이트:', index, field, value);
+            
+            // 현재 추천 데이터 업데이트
+            if (currentRecommendations[index]) {
+                currentRecommendations[index][field] = value;
+            }
+            
+            // 선택된 추천이 현재 수정 중인 것이면 업데이트
+            if (selectedRecommendation && document.querySelectorAll('.recommendation-item')[index].classList.contains('selected')) {
+                selectedRecommendation[field] = value;
+            }
+        }
+
+        async function generateWorkDetails() {
+            if (!selectedRecommendation) {
+                alert('추천 작업을 먼저 선택해주세요.');
+                return;
+            }
+            
+            try {
+                console.log('작업상세 생성 요청');
+                
+                const response = await fetch(`${backendUrl}/generate-work-details`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        selected_recommendation: selectedRecommendation,
+                        user_message: conversationHistory[conversationHistory.length - 2]?.content || ''
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // 추천 영역을 작업명/상세 편집 UI로 변경
+                    showWorkDetailsEditor(data);
+                    
+                    // 채팅에 안내 메시지 추가
+                    addBotResponse({ message: '📝 작업명과 작업상세를 확인하고 수정해주세요. 완료되면 "확정" 버튼을 눌러주세요.' });
+                    
+                    console.log('작업상세 생성 완료');
+                } else {
+                    throw new Error('작업상세 생성 실패');
+                }
+                
+            } catch (error) {
+                console.error('작업상세 생성 오류:', error);
+                alert('작업상세 생성에 실패했습니다.');
+            }
+        }
+
+        function showWorkDetailsEditor(workDetails) {
+            const recommendationsArea = document.getElementById('recommendationsArea');
+            const actionButtons = document.getElementById('actionButtons');
+            
+            recommendationsArea.innerHTML = `
+                <div class="work-details-section">
+                    <div class="work-details-header">
+                        📝 작업명과 작업상세를 확인하고 수정해주세요
+                    </div>
+                    
+                    <div class="work-field">
+                        <label for="workTitle">작업명</label>
+                        <input type="text" id="workTitle" value="${workDetails.work_title}" placeholder="작업명을 입력하세요">
+                    </div>
+                    
+                    <div class="work-field">
+                        <label for="workDetails">작업상세</label>
+                        <textarea id="workDetails" placeholder="작업상세를 입력하세요">${workDetails.work_details}</textarea>
+                    </div>
+                    
+                    <div class="work-actions">
+                        <button class="action-btn secondary" onclick="showRecommendations({recommendations: currentRecommendations})">
+                            ← 추천 목록으로
+                        </button>
+                        <button class="action-btn primary" onclick="finalizeWorkOrderFromEditor()">
+                            확정
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // 액션 버튼 숨기기
+            actionButtons.style.display = 'none';
+            
+            // 입력 필드에 포커스
+            setTimeout(() => {
+                document.getElementById('workTitle').focus();
+            }, 100);
+        }
+
+        async function finalizeWorkOrder() {
+            if (!selectedRecommendation) {
+                alert('추천 작업을 먼저 선택해주세요.');
+                return;
+            }
+            
+            try {
+                console.log('작업요청 완성 요청');
+                
+                const response = await fetch(`${backendUrl}/finalize-work-order-v2`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        work_title: `${selectedRecommendation.equipType} ${selectedRecommendation.statusCode}`,
+                        work_details: `${selectedRecommendation.location} ${selectedRecommendation.equipType} ${selectedRecommendation.statusCode} 작업`,
+                        selected_recommendation: selectedRecommendation,
+                        user_message: conversationHistory[conversationHistory.length - 2]?.content || ''
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // 완성 결과를 채팅에 표시
+                    addBotResponse({ message: data.message });
+                    
+                    // 새 세션 자동 시작
+                    setTimeout(() => {
+                        startNewSession();
+                    }, 2000);
+                    
+                    console.log('작업요청 완성 완료');
+                } else {
+                    throw new Error('작업요청 완성 실패');
+                }
+                
+            } catch (error) {
+                console.error('작업요청 완성 오류:', error);
+                alert('작업요청 완성에 실패했습니다.');
+            }
+        }
+
+        async function finalizeWorkOrderFromEditor() {
+            const workTitle = document.getElementById('workTitle').value.trim();
+            const workDetails = document.getElementById('workDetails').value.trim();
+            
+            if (!workTitle || !workDetails) {
+                alert('작업명과 작업상세를 모두 입력해주세요.');
+                return;
+            }
+            
+            if (!selectedRecommendation) {
+                alert('선택된 추천이 없습니다.');
+                return;
+            }
+            
+            try {
+                console.log('작업요청 최종 완성 요청');
+                
+                const response = await fetch(`${backendUrl}/finalize-work-order-v2`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        work_title: workTitle,
+                        work_details: workDetails,
+                        selected_recommendation: selectedRecommendation,
+                        user_message: conversationHistory[conversationHistory.length - 2]?.content || '',
+                        session_id: currentSessionId
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // 완성 결과를 채팅에 표시
+                    const completionMessage = `✅ ${data.message}
+
+📋 **작업요청 상세정보**
+• 작업대상: ${selectedRecommendation.itemno}
+• 작업명: ${workTitle}
+• 작업상세: ${workDetails}
+
+🏭 **시설정보**
+• 공정명: ${selectedRecommendation.process}
+• 위치: ${selectedRecommendation.location}
+• 설비: ${selectedRecommendation.equipType}
+• 상태: ${selectedRecommendation.statusCode}
+
+작업요청이 성공적으로 완성되었습니다! 🎉`;
+
+                    addBotResponse({ message: completionMessage });
+                    
+                    // 추천 영역 초기화
+                    const recommendationsArea = document.getElementById('recommendationsArea');
+                    recommendationsArea.innerHTML = '<div class="no-recommendations">새로운 작업요청을 입력해주세요.</div>';
+                    
+                    // 액션 버튼 숨기기
+                    document.getElementById('actionButtons').style.display = 'none';
+                    
+                    // 상태 초기화
+                    selectedRecommendation = null;
+                    currentRecommendations = [];
+                    
+                    // 새 세션 자동 시작
+                    setTimeout(() => {
+                        startNewSession();
+                    }, 3000);
+                    
+                    console.log('작업요청 최종 완성 완료');
+                } else {
+                    throw new Error('작업요청 완성 실패');
+                }
+                
+            } catch (error) {
+                console.error('작업요청 완성 오류:', error);
+                alert('작업요청 완성에 실패했습니다.');
+            }
+        }
+
+        // 자동완성 기능 (기존 기능 유지)
+        let autoCompleteTimeout;
+        
+        function handleInputChange() {
+            const input = document.getElementById('messageInput');
+            const query = input.value.trim();
+            
+            // 자동완성이 비활성화되어 있으면 아무것도 하지 않음
+            if (!document.getElementById('autoCompleteToggle').checked) {
+                hideAutocomplete();
+                return;
+            }
+            
+            // 이전 타이머 클리어
+            clearTimeout(autoCompleteTimeout);
+            
+            // 2글자 이상일 때만 자동완성 요청
+            if (query.length >= 2) {
+                autoCompleteTimeout = setTimeout(() => {
+                    console.log('자동완성 요청 (전체 텍스트):', query);
+                    requestAutocomplete(query);
+                }, 200); // 200ms로 단축하여 더 빠른 응답
+            } else {
+                hideAutocomplete();
+            }
+        }
+        
+        async function requestAutocomplete(query) {
+            try {
+                console.log('자동완성 요청:', query);
+                
+                const response = await fetch(`${backendUrl}/autocomplete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        input_text: query
+                        // scenario_type을 제거하여 자동 감지하도록 함
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('자동완성 응답:', data);
+                    displayAutocomplete(data.suggestions || []);
+                } else {
+                    console.error('자동완성 요청 실패:', response.status);
+                }
+                
+            } catch (error) {
+                console.error('자동완성 오류:', error);
+            }
+        }
+        
+        function displayAutocomplete(suggestions) {
+            const dropdown = document.getElementById('autoCompleteDropdown');
+            const inputWrapper = document.querySelector('.input-wrapper');
+            
+            if (suggestions.length === 0) {
+                hideAutocomplete();
+                return;
+            }
+            
+            let html = '';
+            suggestions.forEach((suggestion, index) => {
+                // data 속성을 사용하여 안전하게 처리
+                html += `<div class="auto-complete-item" 
+                              data-suggestion="${suggestion.replace(/"/g, '&quot;')}"
+                              onclick="selectAutocompleteFromData(this)"
+                              onkeydown="handleDropdownKeydown(event, this)"
+                              tabindex="0">${suggestion}</div>`;
+            });
+            
+            dropdown.innerHTML = html;
+            dropdown.style.display = 'block';
+            
+            // 드롭다운이 표시되면 입력창을 위로 이동
+            inputWrapper.classList.add('moved-up');
+            
+            // 첫 번째 항목에 포커스 (키보드 네비게이션 지원)
+            setTimeout(() => {
+                const firstItem = dropdown.querySelector('.auto-complete-item');
+                if (firstItem) {
+                    firstItem.focus();
+                }
+            }, 100);
+        }
+        
+        function selectAutocomplete(suggestion) {
+            const messageInput = document.getElementById('messageInput');
+            console.log('자동완성 선택:', suggestion);
+            messageInput.value = suggestion;
+            hideAutocomplete();
+            messageInput.focus();
+        }
+
+        function selectAutocompleteFromData(element) {
+            const suggestion = element.getAttribute('data-suggestion');
+            console.log('자동완성 선택 (data):', suggestion);
+            selectAutocomplete(suggestion);
+        }
+        
+        function hideAutocomplete() {
+            const dropdown = document.getElementById('autoCompleteDropdown');
+            const inputWrapper = document.querySelector('.input-wrapper');
+            
+            dropdown.style.display = 'none';
+            
+            // 드롭다운이 숨겨지면 입력창을 원래 위치로 이동
+            inputWrapper.classList.remove('moved-up');
+        }
+        
+        // 클릭 시 자동완성 숨기기
+        document.addEventListener('click', function(event) {
+            const inputWrapper = document.querySelector('.input-wrapper');
+            if (!inputWrapper.contains(event.target)) {
+                hideAutocomplete();
+            }
+        });
+
+        // ESC 키로 자동완성 숨기기
+        document.getElementById('messageInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                hideAutocomplete();
+            }
+        });
+
+        // 입력창 클릭 시 자동완성 다시 표시 (입력 방해 방지를 위해 제거)
+        // document.getElementById('messageInput').addEventListener('click', function() {
+        //     const query = this.value.trim();
+        //     if (query.length >= 2 && document.getElementById('autoCompleteToggle').checked) {
+        //         requestAutocomplete(query);
+        //     }
+        // });
+
+        // 드롭다운 항목 키보드 이벤트 처리
+        function handleDropdownKeydown(event, element) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                selectAutocompleteFromData(element);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                hideAutocomplete();
+            }
+        }
+
+        // 예시 문장 사용
+        function useExample(element) {
+            const exampleText = element.textContent;
+            document.getElementById('messageInput').value = exampleText;
+            document.getElementById('messageInput').focus();
+        }
+    </script>
+</body>
+</html> 
